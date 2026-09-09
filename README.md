@@ -23,11 +23,38 @@ tracks center-of-mass rise; a Vertec-style device measures standing-reach
 delta, which adds arm/timing skill — so expect a stable linear offset, not
 identity). ~20 paired reps per athlete type is enough for a solid fit.
 
-### First-step quickness
+### First-step quickness — directional
 Audio GO after a random 1.5–3.5 s delay (space bar arms it). From the insole
 stream: **reaction** = first load redistribution after GO, **push-off** =
 stepping foot's unload edge, **first contact** = that foot's re-plant. All
 three per trial, with the stepping side.
+
+**Direction** (the AWE dashboard's directional-quickness polar): the stepping
+foot's world-frame horizontal velocity at first contact gives the push-off
+azimuth, relative to a "forward" heading locked at calibration (mean foot yaw
+while standing still). Trials bin into 8 directions; the polar overlays
+push-off quickness **off LEFT vs off RIGHT foot** (best-time normalized) and
+calls out the weakest direction. Run trials in all 8 directions off each foot
+to fill the chart — that asymmetry map is the coaching product.
+
+### Sprint acceleration (first N steps)
+Beep start (S key arms it) → every insole contact edge after GO is a step,
+and each swing's ZUPT peak speed attaches to its step. Output: per-step speed
+ladder (L/R colored), **time to step N**, **speed at step N**, **avg
+acceleration** (vN / tN), and the **3-step split** — with a per-rep
+timing-gate / video ground-truth column.
+
+**Why N = 5 by default** (selectable 3/5/7): steps 1–2 are dominated by
+reaction and stance variability; 3 steps ≈ 2.5–3 m is the classic coaching
+"first three steps" burst but gives only 3 samples and — with odd counts —
+always ends on the same foot that started. 5 steps ≈ 4.5–6 m lands in the
+5-yard burst zone where field-sport separation actually happens, still fully
+inside the acceleration phase (~60–70 % of max velocity), with enough
+samples to smooth L/R asymmetry and short enough for indoor runways. 7 steps
+≈ a 10-yard split (the combine's acceleration standard) when there's room.
+Every step is captured and exported regardless, so N is an analysis choice,
+not a capture limit. For symmetric assessment, run reps starting off each
+foot (start side is logged).
 
 ### Foot speed from IMU (ZUPT)
 World-frame linear acceleration (rotated by the game-rotation quaternion) is

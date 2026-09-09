@@ -30,6 +30,8 @@
     zuptStillAcc: 0.8,         // …and |linAcc| below this (m/s²)
     speedWindowMaxMs: 1200,    // ignore "swings" longer than this (walking away)
     calMs: 1500,
+    sprintStepsDefault: 5,     // see README: 5 ≈ the 5-yard burst zone; 3-split always shown
+    sprintMaxMs: 6000,         // give up if N contacts don't arrive
   };
   const G = 9.80665;
 
@@ -45,9 +47,13 @@
     jumps: [],                              // {n, foot, flightMs, estIn, deviceIn}
     flights: [],                            // recent flight spans for RSI
     calUntil: 0, calBuf: { left: [], right: [] },
-    // first-step drill
+    // first-step drill (+ directional push-off)
     fs: { armed: false, goAt: null, timer: null, reactionMs: null, pushSide: null,
-          pushMs: null, stepMs: null, trials: [] },
+          pushMs: null, stepMs: null, trials: [], vdir: { left: [0, 0], right: [0, 0] } },
+    headingRef: 0,                          // "forward" yaw captured at calibration
+    polarTimes: { L: Array(8).fill(null), R: Array(8).fill(null) }, // best first-contact ms per direction
+    // sprint acceleration drill
+    sprint: { armed: false, goAt: null, timer: null, killT: null, n: 5, steps: [], trials: [] },
     // per-foot ZUPT integrator
     imu: {
       left:  { q: null, v: [0, 0, 0], d: [0, 0, 0], swingStart: 0, planted: true, lastT: 0, peak: 0 },
@@ -83,7 +89,11 @@
       if (b.length > 10) S.ref[side] = b[Math.floor(b.length / 2)];
     }
     S.calUntil = 0;
-    if (S.ref.left && S.ref.right) log(`Calibrated — ref L ${S.ref.left.toFixed(2)} · R ${S.ref.right.toFixed(2)}.`, "ok");
+    // lock "forward" = the athlete's facing during calibration (mean foot yaw)
+    const yl = S.imu.left.q ? yawOf(S.imu.left.q) : null;
+    const yr = S.imu.right.q ? yawOf(S.imu.right.q) : null;
+    S.headingRef = yl != null && yr != null ? (yl + yr) / 2 : (yl ?? yr ?? 0);
+    if (S.ref.left && S.ref.right) log(`Calibrated — ref L ${S.ref.left.toFixed(2)} · R ${S.ref.right.toFixed(2)} · forward locked.`, "ok");
   }
 
   // ---------- vertical leap ----------
@@ -96,7 +106,10 @@
     const ref = S.ref[side] ?? 0.5;
     // per-foot contact hysteresis (feeds ZUPT + first-step)
     if (S.loaded[side] && v <= ref * CFG.contactOffFrac) { S.loaded[side] = false; S.lastEdge[side] = t; }
-    else if (!S.loaded[side] && v >= ref * CFG.contactOnFrac) { S.loaded[side] = true; S.lastEdge[side] = t; }
+    else if (!S.loaded[side] && v >= ref * CFG.contactOnFrac) {
+      S.loaded[side] = true; S.lastEdge[side] = t;
+      if (S.sprint.goAt != null) recordSprintContact(side, t);
+    }
 
     // rolling buffer for takeoff-foot classification — must survive the whole
     // flight, since classification runs at landing over [takeoff-250ms, takeoff]
@@ -182,7 +195,7 @@
 
   // ---------- first-step quickness ----------
   function armGo() {
-    if (S.fs.armed) return;
+    if (S.fs.armed || S.sprint.armed || S.sprint.goAt != null) return;
     S.fs.armed = true;
     Object.assign(S.fs, { goAt: null, reactionMs: null, pushSide: null, pushMs: null, stepMs: null, baseline: { ...S.load } });
     $("btn-go").classList.add("armed");
@@ -194,6 +207,7 @@
   function fireGo() {
     S.fs.goAt = now();
     S.fs.baseline = { ...S.load };
+    S.fs.vdir = { left: [0, 0], right: [0, 0] };
     $("go-light").className = "go-light go";
     beep(880, 120);
     if (S.sim) simFirstStepResponse();
@@ -221,14 +235,143 @@
   function finishTrial() {
     const fs = S.fs;
     const trial = { n: fs.trials.length + 1, side: fs.pushSide === "left" ? "L" : "R",
-      reactionMs: Math.round(fs.reactionMs ?? 0), pushMs: Math.round(fs.pushMs ?? 0), stepMs: Math.round(fs.stepMs ?? 0) };
+      reactionMs: Math.round(fs.reactionMs ?? 0), pushMs: Math.round(fs.pushMs ?? 0), stepMs: Math.round(fs.stepMs ?? 0),
+      dir: null, azDeg: null };
+    // push-off direction: azimuth of the stepping foot's horizontal velocity at
+    // first contact, relative to the calibrated "forward" heading
+    const vd = fs.vdir[fs.pushSide] ?? [0, 0];
+    if (Math.hypot(vd[0], vd[1]) > 0.25) {
+      const az = Math.atan2(vd[1], vd[0]) * 180 / Math.PI - S.headingRef;
+      trial.azDeg = Math.round(((az % 360) + 360) % 360);
+      // TODO[SDK]: verify world-frame handedness on hardware (sign of the CW mapping)
+      const idx = ((Math.round(-az / 45) % 8) + 8) % 8;
+      trial.dir = DIRS[idx];
+      const tArr = S.polarTimes[trial.side];
+      if (tArr[idx] == null || trial.stepMs < tArr[idx]) tArr[idx] = trial.stepMs;
+      drawPolar();
+    }
     fs.trials.push(trial);
+    $("fs-dir").textContent = trial.dir ?? "—";
+    updateWeakest();
     $("fs-table").querySelector("tbody").insertAdjacentHTML("afterbegin",
-      `<tr><td>${trial.n}</td><td>${trial.side}</td><td>${trial.reactionMs}</td><td>${trial.pushMs}</td><td>${trial.stepMs}</td></tr>`);
+      `<tr><td>${trial.n}</td><td>${trial.side}</td><td>${trial.dir ?? "—"}</td><td>${trial.reactionMs}</td><td>${trial.pushMs}</td><td>${trial.stepMs}</td></tr>`);
     fs.armed = false; fs.goAt = null;
     $("btn-go").classList.remove("armed");
     $("go-light").className = "go-light";
-    log(`First step #${trial.n}: ${trial.side} — contact in ${trial.stepMs} ms.`, "ok");
+    log(`First step #${trial.n}: ${trial.side}${trial.dir ? " → " + trial.dir : ""} — contact in ${trial.stepMs} ms.`, "ok");
+  }
+
+  // ---------- directional quickness polar (AWE dashboard concept) ----------
+  const DIRS = ["FWD", "FWD-R", "RIGHT", "BACK-R", "BACK", "BACK-L", "LEFT", "FWD-L"]; // clockwise from top
+  function yawOf(q) { return Math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z)) * 180 / Math.PI; }
+  function bestTime() {
+    const all = [...S.polarTimes.L, ...S.polarTimes.R].filter((v) => v != null);
+    return all.length ? Math.min(...all) : null;
+  }
+  function drawPolar() {
+    const c = $("fs-polar"), ctx = c.getContext("2d");
+    const W = c.width, H = c.height, cx = W / 2, cy = H / 2 + 4, R = H / 2 - 26;
+    ctx.clearRect(0, 0, W, H);
+    ctx.strokeStyle = "rgba(52,59,122,.8)"; ctx.fillStyle = "#9aa3c7";
+    ctx.font = "9px sans-serif"; ctx.textAlign = "center"; ctx.lineWidth = 1;
+    [0.33, 0.66, 1].forEach((f) => { ctx.beginPath(); ctx.arc(cx, cy, R * f, 0, 7); ctx.stroke(); });
+    DIRS.forEach((d, i) => {
+      const a = -Math.PI / 2 + i * Math.PI / 4;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); ctx.stroke();
+      ctx.fillText(d, cx + Math.cos(a) * (R + 13), cy + Math.sin(a) * (R + 13) + 3);
+    });
+    const best = bestTime();
+    if (best == null) return;
+    const poly = (times, stroke, fill) => {
+      ctx.beginPath();
+      times.forEach((tm, i) => {
+        const v = tm != null ? Math.min(1, best / tm) : 0.05; // quickness = best/time
+        const a = -Math.PI / 2 + i * Math.PI / 4;
+        const x = cx + Math.cos(a) * R * v, y = cy + Math.sin(a) * R * v;
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      });
+      ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
+      ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke();
+    };
+    poly(S.polarTimes.L, "#00d4aa", "rgba(0,212,170,.16)");
+    poly(S.polarTimes.R, "#4f8dff", "rgba(79,141,255,.14)");
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#00d4aa"; ctx.fillRect(10, 10, 8, 8); ctx.fillStyle = "#9aa3c7"; ctx.fillText("off LEFT foot", 22, 17);
+    ctx.fillStyle = "#4f8dff"; ctx.fillRect(10, 24, 8, 8); ctx.fillStyle = "#9aa3c7"; ctx.fillText("off RIGHT foot", 22, 31);
+  }
+  function updateWeakest() {
+    const best = bestTime();
+    if (best == null) return;
+    let worst = null;
+    for (const f of ["L", "R"]) S.polarTimes[f].forEach((tm, i) => {
+      if (tm != null && (!worst || tm > worst.t)) worst = { t: tm, i, f };
+    });
+    if (worst && worst.t > best) $("fs-weak").textContent = `${DIRS[worst.i]} off ${worst.f} · ${Math.round((best / worst.t) * 100)}% of best`;
+  }
+
+  // ---------- sprint acceleration (first N steps) ----------
+  function armSprint() {
+    const sp = S.sprint;
+    if (sp.armed || sp.goAt != null || S.fs.armed || S.fs.goAt != null) return;
+    sp.armed = true;
+    $("btn-sprint").classList.add("armed");
+    $("sp-light").className = "go-light sm armed";
+    sp.timer = setTimeout(fireSprint, CFG.goDelayMinMs + Math.random() * (CFG.goDelayMaxMs - CFG.goDelayMinMs));
+    log(`Sprint armed — ${sp.n} steps on the beep…`);
+  }
+  function fireSprint() {
+    const sp = S.sprint;
+    sp.armed = false; sp.goAt = now(); sp.steps = [];
+    $("sp-light").className = "go-light sm go";
+    beep(660, 150);
+    sp.killT = setTimeout(() => finalizeSprint(true), CFG.sprintMaxMs);
+    if (S.sim) simSprintResponse();
+  }
+  function recordSprintContact(side, t) {
+    const sp = S.sprint;
+    if (sp.goAt == null || sp.steps.length >= sp.n) return null;
+    const rec = { step: sp.steps.length + 1, side, tMs: Math.round(t - sp.goAt), v: null };
+    sp.steps.push(rec);
+    if (sp.steps.length >= sp.n) setTimeout(() => finalizeSprint(false), 500); // let the last ZUPT commit
+    return rec;
+  }
+  function fillSprintSpeed(side, v) {
+    const rec = [...S.sprint.steps].reverse().find((s) => s.side === side && s.v == null);
+    if (rec) rec.v = v;
+  }
+  function finalizeSprint(timedOut) {
+    const sp = S.sprint;
+    if (sp.goAt == null) return;
+    clearTimeout(sp.killT);
+    sp.goAt = null;
+    $("sp-light").className = "go-light sm";
+    $("btn-sprint").classList.remove("armed");
+    if (sp.steps.length < 2) { log("Sprint: not enough steps detected.", "warn"); return; }
+    const last = sp.steps[sp.steps.length - 1];
+    const vN = last.v;
+    const trial = {
+      n: sp.trials.length + 1, N: sp.steps.length, startSide: sp.steps[0].side === "left" ? "L" : "R",
+      t3: sp.steps[2] ? sp.steps[2].tMs : null, tN: last.tMs, vN,
+      accel: vN != null ? vN / (last.tMs / 1000) : null, gate: null,
+      steps: sp.steps.map((s) => ({ ...s })),
+    };
+    sp.trials.push(trial);
+    $("sp-time").textContent = (trial.tN / 1000).toFixed(2);
+    $("sp-v").textContent = vN != null ? vN.toFixed(2) : "—";
+    $("sp-acc").textContent = trial.accel != null ? trial.accel.toFixed(2) : "—";
+    $("sp-split3").textContent = trial.t3 != null ? (trial.t3 / 1000).toFixed(2) : "—";
+    const maxV = Math.max(...trial.steps.map((s) => s.v ?? 0), 1);
+    $("sp-bars").innerHTML = trial.steps.map((s) =>
+      `<div class="bar ${s.side === "right" ? "R" : ""}" title="step ${s.step} · ${s.tMs} ms" style="height:${Math.max(8, ((s.v ?? 0) / maxV) * 78)}%"><span>${s.v != null ? s.v.toFixed(1) : "·"}</span></div>`).join("");
+    $("sp-table").querySelector("tbody").insertAdjacentHTML("afterbegin",
+      `<tr><td>${trial.n}</td><td>${trial.startSide}</td><td>${trial.N}</td><td>${trial.t3 ?? "—"}</td><td>${trial.tN}</td>
+       <td>${vN != null ? vN.toFixed(2) : "—"}</td><td>${trial.accel != null ? trial.accel.toFixed(2) : "—"}</td>
+       <td><input type="number" step="0.01" placeholder="—" data-sprint="${trial.n}" /></td></tr>`);
+    $("sp-table").querySelector("input").addEventListener("change", (e) => {
+      const tr = sp.trials.find((x) => x.n === Number(e.target.dataset.sprint));
+      if (tr) { tr.gate = Number(e.target.value); log(`Sprint ${tr.n}: gate time ${tr.gate}s logged (est ${(tr.tN / 1000).toFixed(2)}s).`); }
+    });
+    log(`Sprint #${trial.n}: ${trial.N} steps in ${(trial.tN / 1000).toFixed(2)}s${vN != null ? ` → ${vN.toFixed(2)} m/s` : ""}${timedOut ? " (timeout)" : ""}.`, "ok");
   }
 
   // ---------- per-foot ZUPT speed (world-frame linear acceleration) ----------
@@ -248,6 +391,7 @@
     st.lastT = t;
     if (!dt) return;
     const world = st.q ? quatRotate(st.q, [a.x, a.y, a.z]) : [a.x, a.y, a.z];
+    if (S.fs.goAt != null) { const vd = S.fs.vdir[side]; vd[0] += world[0] * dt; vd[1] += world[1] * dt; }
     const mag = Math.hypot(...world);
     const plantedNow = S.loaded[side] && S.load[side] >= (S.ref[side] ?? 0.5) * CFG.zuptLoadFrac && mag < CFG.zuptStillAcc;
     if (plantedNow) {
@@ -256,6 +400,7 @@
         S.peakSpeed[side] = st.peak;
         S.lastStride = Math.hypot(st.d[0], st.d[1]); // horizontal displacement of the swing
         renderSpeed();
+        if (S.sprint.goAt != null || S.sprint.steps.length) fillSprintSpeed(side, st.peak);
       }
       st.planted = true; st.v = [0, 0, 0]; st.d = [0, 0, 0]; st.peak = 0;
       return;
@@ -308,17 +453,21 @@
 
   // ---------- CSV export (features + ground truth → calibration fits) ----------
   function exportCsv() {
-    const lines = ["kind,n,foot,flight_ms,est_in,device_in,reaction_ms,pushoff_ms,contact_ms,peak_speed_ms"];
-    for (const j of S.jumps) lines.push(`jump,${j.n},${j.foot},${j.flightMs},${j.estIn.toFixed(2)},${j.deviceIn ?? ""},,,,`);
-    for (const t of S.fs.trials) lines.push(`first_step,${t.n},${t.side},,,,${t.reactionMs},${t.pushMs},${t.stepMs},`);
-    if (S.peakSpeed.left != null) lines.push(`foot_speed,1,L,,,,,,,${S.peakSpeed.left.toFixed(3)}`);
-    if (S.peakSpeed.right != null) lines.push(`foot_speed,1,R,,,,,,,${S.peakSpeed.right.toFixed(3)}`);
+    const lines = ["kind,n,foot,flight_ms,est_in,device_in,reaction_ms,pushoff_ms,contact_ms,peak_speed_ms,dir,az_deg,t3_ms,tN_ms,accel_ms2,gate_s"];
+    for (const j of S.jumps) lines.push(`jump,${j.n},${j.foot},${j.flightMs},${j.estIn.toFixed(2)},${j.deviceIn ?? ""},,,,,,,,,,`);
+    for (const t of S.fs.trials) lines.push(`first_step,${t.n},${t.side},,,,${t.reactionMs},${t.pushMs},${t.stepMs},,${t.dir ?? ""},${t.azDeg ?? ""},,,,`);
+    for (const tr of S.sprint.trials) {
+      lines.push(`sprint,${tr.n},${tr.startSide},,,,,,,${tr.vN != null ? tr.vN.toFixed(3) : ""},,,${tr.t3 ?? ""},${tr.tN},${tr.accel != null ? tr.accel.toFixed(3) : ""},${tr.gate ?? ""}`);
+      for (const s of tr.steps) lines.push(`sprint_step,${tr.n},${s.side === "left" ? "L" : "R"},,,,,,${s.tMs},${s.v != null ? s.v.toFixed(3) : ""},,,,,,`);
+    }
+    if (S.peakSpeed.left != null) lines.push(`foot_speed,1,L,,,,,,,${S.peakSpeed.left.toFixed(3)},,,,,,`);
+    if (S.peakSpeed.right != null) lines.push(`foot_speed,1,R,,,,,,,${S.peakSpeed.right.toFixed(3)},,,,,,`);
     const blob = new Blob([lines.join("\n")], { type: "text/csv" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `explosiveness-${new Date().toISOString().slice(0, 19)}.csv`;
     a.click();
-    log(`Exported ${S.jumps.length} jumps · ${S.fs.trials.length} first-step trials.`);
+    log(`Exported ${S.jumps.length} jumps · ${S.fs.trials.length} first-step trials · ${S.sprint.trials.length} sprints.`);
   }
 
   // ---------- SDK adapter (every BS.* touchpoint lives here) ----------
@@ -417,6 +566,9 @@
     still(1200);
     S.simScript = seq;
     S.simTimer = setInterval(() => {
+      // pause the script while a GO/sprint drill is live — the drill scripts its
+      // own response, and mixed frames would race the drill state machines
+      if (S.fs.armed || S.fs.goAt != null || S.sprint.armed || S.sprint.goAt != null) return;
       const f = S.simScript.shift();
       if (!f) return; // idle at end; GO drill drives its own sim response
       const tt = now();
@@ -430,13 +582,34 @@
     }, 20);
   }
   function simFirstStepResponse() {
-    // scripted human-ish response ~230ms after GO
+    // scripted human-ish response ~230ms after GO, pushing off in a random direction
     const side = Math.random() > 0.5 ? "left" : "right";
     const react = 180 + Math.random() * 90;
+    const idx = Math.floor(Math.random() * 8);
+    const az = -idx * 45 * Math.PI / 180; // inverse of the CW chart mapping
     setTimeout(() => { onLoad(side, 0.62, now()); }, react);
     setTimeout(() => { onLoad(side, 0.12, now()); }, react + 90);
+    for (let k = 0; k < 8; k++) setTimeout(() => {
+      onFootLinAcc(side, { x: 9 * Math.cos(az), y: 9 * Math.sin(az), z: 0 }, now());
+    }, react + 80 + k * 20);
     setTimeout(() => { onLoad(side, 0.75, now()); }, react + 260);
     setTimeout(() => { onLoad(side, 0.5, now()); onLoad(side === "left" ? "right" : "left", 0.5, now()); }, react + 500);
+  }
+  function simSprintResponse() {
+    const sp = S.sprint;
+    let side = Math.random() > 0.5 ? "left" : "right";
+    let t = 320 + Math.random() * 80; // first contact after GO
+    for (let i = 0; i < sp.n; i++) {
+      const v = 1.8 + 0.75 * i * (0.92 + Math.random() * 0.16);
+      const at = t, s = side;
+      setTimeout(() => {
+        S.peakSpeed[s] = v; renderSpeed();
+        const rec = recordSprintContact(s, now());
+        if (rec) rec.v = v; // sim fills speed directly; hardware path fills via ZUPT commit
+      }, at);
+      t += 430 * Math.pow(0.92, i) * (0.95 + Math.random() * 0.1);
+      side = side === "left" ? "right" : "left";
+    }
   }
   function simStop() {
     S.sim = false;
@@ -451,7 +624,18 @@
   $("btn-cal").addEventListener("click", startCal);
   $("btn-sim").addEventListener("click", simStart);
   $("btn-go").addEventListener("click", armGo);
+  $("btn-sprint").addEventListener("click", armSprint);
+  document.querySelectorAll("#sp-seg button").forEach((b) => b.addEventListener("click", () => {
+    S.sprint.n = Number(b.dataset.n);
+    document.querySelectorAll("#sp-seg button").forEach((x) => x.classList.toggle("on", x === b));
+    $("sp-n-label").textContent = b.dataset.n;
+  }));
   $("btn-export").addEventListener("click", exportCsv);
-  document.addEventListener("keydown", (e) => { if (e.code === "Space") { e.preventDefault(); armGo(); } });
+  document.addEventListener("keydown", (e) => {
+    if (e.code === "Space") { e.preventDefault(); armGo(); }
+    if (e.code === "KeyS") armSprint();
+  });
+  S.sprint.n = CFG.sprintStepsDefault;
+  drawPolar();
   log("Ready. Connect insoles (+ optional wrist Sense) or hit Simulate.");
 })();
