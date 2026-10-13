@@ -92,3 +92,38 @@ test("onChange fires on set", () => {
   off(); U.set("metric");
   assert.deepEqual(seen, ["metric", "imperial"]);
 });
+
+test("html(): self-repainting value markup for log lines", () => {
+  reset(); U.set("imperial");
+  assert.equal(U.html("height", 33), '<span data-kind="height" data-base="33" data-with-unit>13 in</span>');
+  const keep = U.html("height", 33, { trim: false });
+  assert.match(keep, /data-trim="0"/);
+  assert.match(keep, />13\.0 in</);
+  assert.match(U.html("dist", 4, { digits: 1 }), /data-digits="1".*>13\.1 ft</);
+  assert.match(U.html("speed", null), /data-base="" data-with-unit>—</);
+  assert.throws(() => U.html("nope", 1), /unknown kind/);
+});
+
+test("html() output repaints through bind when the system flips (trim honoured)", () => {
+  reset(); U.set("imperial");
+  const el = { dataset: { kind: "height", base: "33", withUnit: "", trim: "0" }, tagName: "SPAN", textContent: "" };
+  const root = { querySelectorAll: (sel) => (sel === "[data-u]" ? [] : [el]) };
+  U.bind(root);
+  assert.equal(el.textContent, "13.0 in");
+  U.set("metric"); U.bind(root);
+  assert.equal(el.textContent, "33.0 cm");
+  delete el.dataset.trim; U.bind(root);
+  assert.equal(el.textContent, "33 cm");
+});
+
+test("data-empty overrides the dash placeholder; values still win over it", () => {
+  reset(); U.set("metric");
+  const el = { dataset: { kind: "speed", digits: "1", base: "", empty: "·" }, tagName: "SPAN", textContent: "" };
+  U.paint(el);
+  assert.equal(el.textContent, "·");
+  el.dataset.base = "4.47"; U.paint(el);
+  assert.equal(el.textContent, "4.5");
+  const plain = { dataset: { kind: "speed", base: "" }, tagName: "SPAN", textContent: "" };
+  U.paint(plain);
+  assert.equal(plain.textContent, "—");
+});

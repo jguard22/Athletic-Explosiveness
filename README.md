@@ -96,6 +96,19 @@ box re-reads in the new unit. Times (ms, s) are unchanged. The sprint run-up
 distances in the notes below (3 / 5 / 7 steps ≈ 2.5–3 / 4.5–6 / ~9 m) are
 guidance text, not measured values.
 
+Session-log lines carry their lengths and speeds as live values (`BWUnits.html`),
+so flipping the switch repaints old log lines too; the page never mixes systems.
+Sprint step bars with no speed show `·` (`data-empty`), not the unit dash.
+
+**Hotkeys:** Space arms GO and S arms the sprint, but both are ignored while you
+type in a field (gate time, device height), and Space on a focused button
+activates that button (so keyboard users can toggle Metric / Imperial). A mouse
+or touch click blurs its button, so "click Simulate, then Space" still arms GO.
+
+Colors, radii and control padding are CSS custom properties in `:root`
+(`index.html`); the polar canvas reads the same tokens. The sprint table scrolls
+inside its card on narrow screens instead of widening the page.
+
 ## CSV export
 One row per jump / first-step trial / foot-speed swing, with the ground-truth
 columns (`device_cm`) alongside estimates — feeds the `bwml` calibration fits
@@ -106,7 +119,8 @@ when the units switch landed — update any saved fit scripts.)
 
 ## Tests
 `npm test` runs `test/units.test.js` (Node's built-in runner, no install):
-conversions, locale default, persistence and the ground-truth round trip.
+conversions, locale default, persistence, the ground-truth round trip, the
+self-repainting `html()` markup used by the log, and the `data-empty` placeholder.
 
 ## SDK notes
 All hardware touchpoints live in `SDKAdapter` (app.js) — `BS.DevicePair.insoles`

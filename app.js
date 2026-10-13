@@ -71,10 +71,15 @@
   const $ = (id) => document.getElementById(id);
   const U = window.BWUnits;   // display units; all state below stays metric
 
+  // msg may carry U.html(...) spans: they repaint when the units switch flips,
+  // so old log lines never mix systems with the cards.
   function log(msg, cls = "") {
     const el = $("log");
     el.insertAdjacentHTML("afterbegin", `<div class="${cls}">${new Date().toLocaleTimeString()} — ${msg}</div>`);
+    U.bind(el.firstElementChild);
   }
+  // theme token -> value, for canvas drawing (CSS custom properties stay the single source)
+  const tok = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
   // ---------- calibration (standing reference) ----------
   function startCal() {
@@ -157,7 +162,7 @@
     renderJumps(rep);
     computeRsi();
     if (S.wrist.connected || S.sim) captureWristPeak();
-    log(`Jump #${rep.n}: ${U.fmtU("height", estCm)} (${Math.round(flightMs)} ms flight, ${foot}).`, "ok");
+    log(`Jump #${rep.n}: ${U.html("height", estCm, { trim: false })} (${Math.round(flightMs)} ms flight, ${foot}).`, "ok");
   }
 
   function computeRsi() {
@@ -203,7 +208,7 @@
     U.put(inp, "height", j.deviceCm);
     log(j.deviceCm == null
       ? `Rep ${j.n}: device height cleared.`
-      : `Rep ${j.n}: device height ${U.fmtU("height", j.deviceCm)} logged (est ${U.fmtU("height", j.estCm)}).`);
+      : `Rep ${j.n}: device height ${U.html("height", j.deviceCm, { trim: false })} logged (est ${U.html("height", j.estCm, { trim: false })}).`);
   });
 
   // ---------- first-step quickness ----------
@@ -285,7 +290,8 @@
     const c = $("fs-polar"), ctx = c.getContext("2d");
     const W = c.width, H = c.height, cx = W / 2, cy = H / 2 + 4, R = H / 2 - 26;
     ctx.clearRect(0, 0, W, H);
-    ctx.strokeStyle = "rgba(52,59,122,.8)"; ctx.fillStyle = "#9aa3c7";
+    const teal = tok("--teal"), blue = tok("--blue"), muted = tok("--muted"), line = tok("--line");
+    ctx.strokeStyle = line; ctx.fillStyle = muted;
     ctx.font = "9px sans-serif"; ctx.textAlign = "center"; ctx.lineWidth = 1;
     [0.33, 0.66, 1].forEach((f) => { ctx.beginPath(); ctx.arc(cx, cy, R * f, 0, 7); ctx.stroke(); });
     DIRS.forEach((d, i) => {
@@ -295,7 +301,7 @@
     });
     const best = bestTime();
     if (best == null) return;
-    const poly = (times, stroke, fill) => {
+    const poly = (times, color, fillAlpha) => {
       ctx.beginPath();
       times.forEach((tm, i) => {
         const v = tm != null ? Math.min(1, best / tm) : 0.05; // quickness = best/time
@@ -303,14 +309,15 @@
         const x = cx + Math.cos(a) * R * v, y = cy + Math.sin(a) * R * v;
         i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
       });
-      ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
-      ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke();
+      ctx.closePath();
+      ctx.globalAlpha = fillAlpha; ctx.fillStyle = color; ctx.fill();
+      ctx.globalAlpha = 1; ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
     };
-    poly(S.polarTimes.L, "#00d4aa", "rgba(0,212,170,.16)");
-    poly(S.polarTimes.R, "#4f8dff", "rgba(79,141,255,.14)");
+    poly(S.polarTimes.L, teal, 0.16);
+    poly(S.polarTimes.R, blue, 0.14);
     ctx.textAlign = "left";
-    ctx.fillStyle = "#00d4aa"; ctx.fillRect(10, 10, 8, 8); ctx.fillStyle = "#9aa3c7"; ctx.fillText("off LEFT foot", 22, 17);
-    ctx.fillStyle = "#4f8dff"; ctx.fillRect(10, 24, 8, 8); ctx.fillStyle = "#9aa3c7"; ctx.fillText("off RIGHT foot", 22, 31);
+    ctx.fillStyle = teal; ctx.fillRect(10, 10, 8, 8); ctx.fillStyle = muted; ctx.fillText("off LEFT foot", 22, 17);
+    ctx.fillStyle = blue; ctx.fillRect(10, 24, 8, 8); ctx.fillStyle = muted; ctx.fillText("off RIGHT foot", 22, 31);
   }
   function updateWeakest() {
     const best = bestTime();
@@ -375,7 +382,7 @@
     $("sp-split3").textContent = trial.t3 != null ? (trial.t3 / 1000).toFixed(2) : "—";
     const maxV = Math.max(...trial.steps.map((s) => s.v ?? 0), 1);
     $("sp-bars").innerHTML = trial.steps.map((s) =>
-      `<div class="bar ${s.side === "right" ? "R" : ""}" title="step ${s.step} · ${s.tMs} ms" style="height:${Math.max(8, ((s.v ?? 0) / maxV) * 78)}%"><span data-kind="speed" data-digits="1" data-base="${s.v ?? ""}"></span></div>`).join("");
+      `<div class="bar ${s.side === "right" ? "R" : ""}" title="step ${s.step} · ${s.tMs} ms" style="height:${Math.max(8, ((s.v ?? 0) / maxV) * 78)}%"><span data-kind="speed" data-digits="1" data-empty="·" data-base="${s.v ?? ""}"></span></div>`).join("");
     U.bind($("sp-bars"));
     $("sp-table").querySelector("tbody").insertAdjacentHTML("afterbegin",
       `<tr><td>${trial.n}</td><td>${trial.startSide}</td><td>${trial.N}</td><td>${trial.t3 ?? "—"}</td><td>${trial.tN}</td>
@@ -386,7 +393,7 @@
       const tr = sp.trials.find((x) => x.n === Number(e.target.dataset.sprint));
       if (tr) { tr.gate = e.target.value === "" ? null : Number(e.target.value); log(`Sprint ${tr.n}: gate time ${tr.gate}s logged (est ${(tr.tN / 1000).toFixed(2)}s).`); }   // seconds — no unit conversion
     });
-    log(`Sprint #${trial.n}: ${trial.N} steps in ${(trial.tN / 1000).toFixed(2)}s${vN != null ? ` → ${U.fmtU("speed", vN)}` : ""}${timedOut ? " (timeout)" : ""}.`, "ok");
+    log(`Sprint #${trial.n}: ${trial.N} steps in ${(trial.tN / 1000).toFixed(2)}s${vN != null ? ` → ${U.html("speed", vN, { trim: false })}` : ""}${timedOut ? " (timeout)" : ""}.`, "ok");
   }
 
   // ---------- per-foot ZUPT speed (world-frame linear acceleration) ----------
@@ -648,8 +655,22 @@
     $("sp-n-label").textContent = b.dataset.n;
   }));
   $("btn-export").addEventListener("click", exportCsv);
+  // Space / S are the drill hotkeys, but never while the user is working a control:
+  //  - typing in a field (gate time, device height) must not arm anything;
+  //  - a focused button keeps its native Space activation (units switch, keyboard users).
+  // A mouse/touch click blurs its button, so "click Simulate, then Space" still arms GO.
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest && e.target.closest("button");
+    if (b && e.detail > 0) b.blur();   // detail 0 = keyboard-activated, keep focus
+  });
   document.addEventListener("keydown", (e) => {
-    if (e.code === "Space") { e.preventDefault(); armGo(); }
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const t = e.target.closest ? e.target : document.body;
+    if (t.closest("input, select, textarea, [contenteditable]")) return;
+    if (e.code === "Space") {
+      if (t.closest("button")) return;
+      e.preventDefault(); armGo();
+    }
     if (e.code === "KeyS") armSprint();
   });
   S.sprint.n = CFG.sprintStepsDefault;

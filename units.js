@@ -9,6 +9,10 @@
    The choice is a per-browser preference. Until it is made the default follows
    the locale (en-US → imperial), the same rule Steady and Burst use.
 
+   Optional attributes on a [data-kind] element: data-digits (decimals),
+   data-with-unit (append the unit; trailing zeros trimmed unless data-trim="0"),
+   data-empty (text shown instead of "—" when there is no value).
+
    Kinds (base unit → metric / imperial display):
      height     cm   → cm  / in      vertical leap, jump-device height
      dist       m    → m   / ft      stride, course lengths
@@ -99,8 +103,18 @@
     const v = finite(raw) ? Number(raw) : null;
     const digits = el.dataset.digits === undefined ? undefined : Number(el.dataset.digits);
     if (el.tagName === "INPUT") el.value = v == null ? "" : String(+show(kind, v).toFixed(2));
-    else if (el.dataset.withUnit !== undefined) el.textContent = fmtU(kind, v, digits, true);
+    else if (v == null && el.dataset.empty !== undefined) el.textContent = el.dataset.empty;
+    else if (el.dataset.withUnit !== undefined) el.textContent = fmtU(kind, v, digits, el.dataset.trim !== "0");
     else el.textContent = fmt(kind, v, digits);
+  }
+  /** markup for a value that repaints itself when the switch flips (log lines, templates):
+      "12.3 in" by default; opts { digits, trim: false } */
+  function html(kind, v, opts) {
+    const o = opts || {};
+    const a = [`data-kind="${kind}"`, `data-base="${finite(v) ? Number(v) : ""}"`, "data-with-unit"];
+    if (o.digits !== undefined) a.push(`data-digits="${o.digits}"`);
+    if (o.trim === false) a.push('data-trim="0"');
+    return `<span ${a.join(" ")}>${fmtU(kind, v, o.digits, o.trim !== false)}</span>`;
   }
   /** set the metric value on an element and repaint it */
   function put(el, kind, v, digits) {
@@ -134,5 +148,5 @@
     onChange(() => bind(r));
   }
 
-  return { KINDS, localeUnits, get, set, imperial, onChange, unit, show, toBase, fmt, fmtU, paint, put, bind, bindSwitch, init };
+  return { KINDS, localeUnits, get, set, imperial, onChange, unit, show, toBase, fmt, fmtU, html, paint, put, bind, bindSwitch, init };
 });
