@@ -12,13 +12,14 @@ context) — `npx serve .` or GitHub Pages — or open `index.html` and hit
 
 ### Vertical leap (flight-time method)
 Combined insole load drops below 12% of the standing reference → airborne;
-re-load → landed. Height `h = g·t²/8` from flight time `t`, shown in inches +
-cm. Takeoff foot (L / R / BOTH) is classified from the load share in the
+re-load → landed. Height `h = g·t²/8` from flight time `t`, stored in cm and
+shown in the chosen unit system (cm or in). Takeoff foot (L / R / BOTH) is classified from the load share in the
 250 ms before takeoff (one side >75% ⇒ single-leg).
 
 **Calibration against a real jump device:** log the device-measured height
-next to each rep in the table. Pairs export to CSV; fit
-`device_in = a·est_in + b` (they measure different constructs — flight time
+next to each rep in the table (type it in whichever system the header switch is
+on; it is stored in cm). Pairs export to CSV; fit
+`device_cm = a·est_cm + b` (they measure different constructs — flight time
 tracks center-of-mass rise; a Vertec-style device measures standing-reach
 delta, which adds arm/timing skill — so expect a stable linear offset, not
 identity). ~20 paired reps per athlete type is enough for a solid fit.
@@ -62,8 +63,8 @@ integrated to velocity **between pressure-detected stances**. While the foot
 is flat (load ≥60% of ref, |accel| quiet) velocity is clamped to zero — a
 zero-velocity update every single step. That pressure-anchored ZUPT is the
 insole's edge over IMU-only trackers: drift can only accumulate for one swing
-(~300–500 ms) before it's zeroed again. Output: per-swing peak speed (m/s +
-ft/s) and step displacement.
+(~300–500 ms) before it's zeroed again. Output: per-swing peak speed (m/s or
+mph) and step displacement (m or ft).
 
 **Calibration:** residual scale error vs 240 fps slow-mo video + floor tape
 (or timing gates / treadmill belt speed). Export CSV, fit per-firmware scale.
@@ -76,10 +77,36 @@ RSI = flight ms / contact ms.
 Decay-integrated wrist speed peaks during the jump window → arm-swing
 contribution.
 
+## Units (metric / imperial)
+A **Metric | Imperial** switch in the header sets how lengths and speeds are
+read and typed; the choice is remembered per browser, and until it is made
+the default follows the locale (en-US → imperial, as in Steady and Burst).
+
+| Quantity | Metric | Imperial |
+|---|---|---|
+| Vertical leap, jump-device height | cm | in |
+| Stride / step displacement | m | ft |
+| Sprint, foot-swing and arm-drive speed | m/s | mph |
+| Sprint average acceleration | m/s² | ft/s² |
+
+Only the display and the input convert (`units.js`). Everything stored,
+computed and exported stays metric, and the per-rep **device** ground-truth
+box follows the switch while storing cm — flip the switch after typing and the
+box re-reads in the new unit. Times (ms, s) are unchanged. The sprint run-up
+distances in the notes below (3 / 5 / 7 steps ≈ 2.5–3 / 4.5–6 / ~9 m) are
+guidance text, not measured values.
+
 ## CSV export
 One row per jump / first-step trial / foot-speed swing, with the ground-truth
-columns (`device_in`) alongside estimates — feeds the `bwml` calibration fits
-directly.
+columns (`device_cm`) alongside estimates — feeds the `bwml` calibration fits
+directly. **Always metric, whatever the display switch says:** `est_cm`,
+`device_cm`, `peak_speed_ms` (m/s), `accel_ms2` (m/s²), times in ms / s.
+(`est_in` / `device_in` from the first draft were renamed to the cm columns
+when the units switch landed — update any saved fit scripts.)
+
+## Tests
+`npm test` runs `test/units.test.js` (Node's built-in runner, no install):
+conversions, locale default, persistence and the ground-truth round trip.
 
 ## SDK notes
 All hardware touchpoints live in `SDKAdapter` (app.js) — `BS.DevicePair.insoles`

@@ -9,6 +9,7 @@
     --navy: #1a1f47; --navy-2: #12163a; --panel: #21265c; --panel-2: #2a3070;
     --teal: #00d4aa; --teal-dim: #0aa88a; --amber: #ffb020; --red: #ff5468;
     --blue: #4f8dff; --text: #eef1ff; --muted: #9aa3c7; --line: #343b7a;
+    --on-teal: #06251d;
     font-size: 16px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -28,7 +29,7 @@
     padding: 9px 14px; border-radius: 9px; font-size: .85rem; cursor: pointer; transition: all .15s;
   }
   button:hover { border-color: var(--teal); }
-  button.primary { background: var(--teal); border-color: var(--teal); color: #06251d; font-weight: 650; }
+  button.primary { background: var(--teal); border-color: var(--teal); color: var(--on-teal); font-weight: 650; }
   button.connected { background: var(--teal-dim); border-color: var(--teal-dim); color: #04211a; font-weight: 650; }
   button.armed { background: var(--amber); border-color: var(--amber); color: #2a1a02; font-weight: 700; animation: pulse 1s ease-in-out infinite; }
   button:disabled { opacity: .4; cursor: not-allowed; }
@@ -71,7 +72,7 @@
   .go-light.sm { width: 34px; height: 34px; margin: 0; border-width: 2px; }
   .seg { display: flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
   .seg button { border: 0; border-radius: 0; padding: 9px 13px; }
-  .seg button.on { background: var(--teal); color: #06251d; font-weight: 700; }
+  .seg button.on { background: var(--teal); color: var(--on-teal); font-weight: 700; }
   #log { font-size: .74rem; color: var(--muted); max-height: 110px; overflow-y: auto; line-height: 1.5; }
   #log .bad { color: var(--red); } #log .warn { color: var(--amber); } #log .ok { color: var(--teal); }
   footer { margin-top: 20px; color: var(--muted); font-size: .75rem; }
@@ -86,6 +87,9 @@
     <span class="sub">Athletic Explosiveness — vertical leap · directional first step · sprint accel · foot speed</span>
   </div>
   <div class="controls">
+    <div class="seg" id="units-seg" role="group" aria-label="Units">
+      <button data-units="metric" aria-pressed="false">Metric</button><button data-units="imperial" aria-pressed="false">Imperial</button>
+    </div>
     <button id="btn-insoles">Connect Insoles</button>
     <button id="btn-wrist">Connect Wrist Sense</button>
     <button id="btn-cal">Calibrate (stand still)</button>
@@ -98,15 +102,14 @@
   <div class="card span6">
     <h2>Vertical Leap <span class="tag" id="jump-count">0 reps</span></h2>
     <div>
-      <span class="big" id="jump-in">—</span><span class="unit">in</span>
-      <span class="unit" id="jump-cm"></span>
+      <span class="big" id="jump-h">—</span><span class="unit" data-u="height"></span>
       <span class="foot-badge foot-BOTH" id="jump-foot" style="display:none">BOTH</span>
     </div>
-    <div class="sub2">flight <span id="jump-flight">—</span> ms · best <span id="jump-best">—</span> in</div>
+    <div class="sub2">flight <span id="jump-flight">—</span> ms · best <span id="jump-best">—</span> <span data-u="height"></span></div>
     <div class="bars" id="jump-bars"></div>
     <div class="note">Log the measured height from your jump device next to each rep below — pairs export to CSV for the flight-time → device calibration fit.</div>
     <table id="jump-table">
-      <thead><tr><th>#</th><th>foot</th><th>flight ms</th><th>est in</th><th>device in</th></tr></thead>
+      <thead><tr><th>#</th><th>foot</th><th>flight ms</th><th>est <span data-u="height"></span></th><th>device <span data-u="height"></span></th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -143,31 +146,31 @@
     </div>
     <div class="row" style="margin-top:12px;">
       <div class="kv"><div class="v"><span id="sp-time">—</span><span class="unit">s</span></div><div class="k">time → step N</div></div>
-      <div class="kv"><div class="v"><span id="sp-v">—</span><span class="unit">m/s</span></div><div class="k">speed @ step N</div></div>
-      <div class="kv"><div class="v"><span id="sp-acc">—</span><span class="unit">m/s²</span></div><div class="k">avg accel</div></div>
+      <div class="kv"><div class="v"><span id="sp-v">—</span><span class="unit" data-u="speed"></span></div><div class="k">speed @ step N</div></div>
+      <div class="kv"><div class="v"><span id="sp-acc">—</span><span class="unit" data-u="accel"></span></div><div class="k">avg accel</div></div>
       <div class="kv"><div class="v"><span id="sp-split3">—</span><span class="unit">s</span></div><div class="k">3-step split</div></div>
     </div>
     <div class="bars" id="sp-bars"></div>
     <div class="note">Per-step speed from the pressure-anchored ZUPT integrator; step times from insole contact edges. Log a timing-gate / video time for the same rep below — pairs export to CSV for calibration.</div>
     <table id="sp-table">
-      <thead><tr><th>#</th><th>start</th><th>steps</th><th>t→3 ms</th><th>t→N ms</th><th>v@N m/s</th><th>accel</th><th>gate s</th></tr></thead>
+      <thead><tr><th>#</th><th>start</th><th>steps</th><th>t→3 ms</th><th>t→N ms</th><th>v@N <span data-u="speed"></span></th><th>accel <span data-u="accel"></span></th><th>gate s</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
 
   <div class="card">
     <h2>Wrist — Arm Drive <span class="tag" id="wrist-state">not connected</span></h2>
-    <div><span class="big" id="wrist-speed">—</span><span class="unit">m/s</span></div>
+    <div><span class="big" id="wrist-speed">—</span><span class="unit" data-u="speed"></span></div>
     <div class="sub2">arm-swing peak during last jump</div>
   </div>
 
   <div class="card span6">
     <h2>Foot Speed — IMU <span class="tag">ZUPT · per swing</span></h2>
     <div class="row">
-      <div class="kv"><div class="v"><span id="speed-L">—</span><span class="unit">m/s</span></div><div class="k">left peak</div></div>
-      <div class="kv"><div class="v"><span id="speed-R">—</span><span class="unit">m/s</span></div><div class="k">right peak</div></div>
+      <div class="kv"><div class="v"><span id="speed-L">—</span><span class="unit" data-u="speed"></span></div><div class="k">left peak</div></div>
+      <div class="kv"><div class="v"><span id="speed-R">—</span><span class="unit" data-u="speed"></span></div><div class="k">right peak</div></div>
     </div>
-    <div class="sub2"><span id="speed-fts">—</span> ft/s best · step <span id="stride-m">—</span> m</div>
+    <div class="sub2">best <span id="speed-best">—</span> <span data-u="speed"></span> · step <span id="stride">—</span> <span data-u="dist"></span></div>
     <div class="note">World-frame linear acceleration integrated between pressure-detected stances (velocity clamped to zero while the foot is flat — that's the insole's edge over IMU-only trackers). Calibrate residual scale against 240 fps video.</div>
   </div>
 
@@ -189,6 +192,7 @@
 </footer>
 
 <script src="https://unpkg.com/brilliantsole@latest/build/brilliantsole.js"></script>
-<script src="app.js?v=2"></script>
+<script src="units.js?v=1"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>

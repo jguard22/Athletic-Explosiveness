@@ -7,7 +7,11 @@
 
    Ground-truth capture is first-class: per-rep device-measured jump height
    inputs and the CSV export feed the calibration fits documented in the
-   README (flight-time → device height; ZUPT speed → 240fps video). */
+   README (flight-time → device height; ZUPT speed → 240fps video).
+
+   Units: a header Metric / Imperial switch (units.js). Everything stored,
+   computed and exported is metric (cm, m, m/s, m/s²); values are shown and
+   typed in the chosen system and converted only at that edge. */
 
 (() => {
   "use strict";
@@ -44,7 +48,7 @@
     lastEdge: { left: 0, right: 0 },
     combinedAirborneAt: null,
     preFlight: [],                          // rolling [t, l, r] for takeoff classification
-    jumps: [],                              // {n, foot, flightMs, estIn, deviceIn}
+    jumps: [],                              // {n, foot, flightMs, estCm, deviceCm}
     flights: [],                            // recent flight spans for RSI
     calUntil: 0, calBuf: { left: [], right: [] },
     // first-step drill (+ directional push-off)
@@ -60,12 +64,12 @@
       right: { q: null, v: [0, 0, 0], d: [0, 0, 0], swingStart: 0, planted: true, lastT: 0, peak: 0 },
     },
     peakSpeed: { left: null, right: null }, lastStride: null,
-    wrist: { q: null, v: [0, 0, 0], lastT: 0, peak: 0, window: false, connected: false, best: null },
+    wrist: { q: null, v: [0, 0, 0], lastT: 0, peak: 0, window: false, connected: false, best: null, last: null },
     audio: null,
   };
   const now = () => performance.now();
   const $ = (id) => document.getElementById(id);
-  const M2IN = 39.3701;
+  const U = window.BWUnits;   // display units; all state below stays metric
 
   function log(msg, cls = "") {
     const el = $("log");
@@ -144,16 +148,16 @@
 
   function onJump(flightMs, takeoffAt, landAt) {
     const h = (G * (flightMs / 1000) ** 2) / 8;   // meters, flight-time method
-    const estIn = h * M2IN;
+    const estCm = h * 100;
     const foot = classifyTakeoff(takeoffAt);
-    const rep = { n: S.jumps.length + 1, foot, flightMs: Math.round(flightMs), estIn, deviceIn: null };
+    const rep = { n: S.jumps.length + 1, foot, flightMs: Math.round(flightMs), estCm, deviceCm: null };
     S.jumps.push(rep);
     S.flights.push({ start: takeoffAt, end: landAt, flightMs });
     if (S.flights.length > 8) S.flights.shift();
     renderJumps(rep);
     computeRsi();
     if (S.wrist.connected || S.sim) captureWristPeak();
-    log(`Jump #${rep.n}: ${estIn.toFixed(1)} in (${Math.round(flightMs)} ms flight, ${foot}).`, "ok");
+    log(`Jump #${rep.n}: ${U.fmtU("height", estCm)} (${Math.round(flightMs)} ms flight, ${foot}).`, "ok");
   }
 
   function computeRsi() {
@@ -168,30 +172,39 @@
     }
   }
 
+  // Displayed numbers carry their metric value in data-base (units.js repaints
+  // them when the switch flips); bars/rows are built once and relabelled in place.
   function renderJumps(rep) {
-    $("jump-in").textContent = rep.estIn.toFixed(1);
-    $("jump-cm").textContent = `(${(rep.estIn * 2.54).toFixed(1)} cm)`;
+    U.put($("jump-h"), "height", rep.estCm);
     $("jump-flight").textContent = rep.flightMs;
     $("jump-count").textContent = `${S.jumps.length} rep${S.jumps.length === 1 ? "" : "s"}`;
     const badge = $("jump-foot");
     badge.style.display = "inline-block";
     badge.textContent = rep.foot;
     badge.className = `foot-badge foot-${rep.foot}`;
-    $("jump-best").textContent = Math.max(...S.jumps.map((j) => j.estIn)).toFixed(1);
+    U.put($("jump-best"), "height", Math.max(...S.jumps.map((j) => j.estCm)));
     const bars = $("jump-bars");
-    bars.innerHTML = S.jumps.slice(-12).map((j) => {
-      const max = Math.max(...S.jumps.map((x) => x.estIn), 1);
-      return `<div class="bar ${j.foot}" style="height:${Math.max(8, (j.estIn / max) * 78)}%"><span>${j.estIn.toFixed(1)}</span></div>`;
-    }).join("");
+    const max = Math.max(...S.jumps.map((x) => x.estCm), 1);
+    bars.innerHTML = S.jumps.slice(-12).map((j) =>
+      `<div class="bar ${j.foot}" style="height:${Math.max(8, (j.estCm / max) * 78)}%"><span data-kind="height" data-base="${j.estCm}"></span></div>`).join("");
     const tb = $("jump-table").querySelector("tbody");
     tb.insertAdjacentHTML("afterbegin",
-      `<tr><td>${rep.n}</td><td>${rep.foot}</td><td>${rep.flightMs}</td><td>${rep.estIn.toFixed(1)}</td>
-       <td><input type="number" step="0.1" placeholder="—" data-rep="${rep.n}" /></td></tr>`);
-    tb.querySelector("input").addEventListener("change", (e) => {
-      const j = S.jumps.find((x) => x.n === Number(e.target.dataset.rep));
-      if (j) { j.deviceIn = Number(e.target.value); log(`Rep ${j.n}: device height ${j.deviceIn} in logged (est ${j.estIn.toFixed(1)}).`); }
-    });
+      `<tr><td>${rep.n}</td><td>${rep.foot}</td><td>${rep.flightMs}</td><td data-kind="height" data-base="${rep.estCm}"></td>
+       <td><input type="number" step="0.1" placeholder="—" data-kind="height" data-base="" data-rep="${rep.n}" /></td></tr>`);
+    U.bind(bars);
+    U.bind(tb.firstElementChild);
   }
+  // ground-truth entry: typed in the display unit, stored metric (cm)
+  $("jump-table").querySelector("tbody").addEventListener("change", (e) => {
+    const inp = e.target.closest("input[data-rep]");
+    const j = inp && S.jumps.find((x) => x.n === Number(inp.dataset.rep));
+    if (!j) return;
+    j.deviceCm = U.toBase("height", inp.value);
+    U.put(inp, "height", j.deviceCm);
+    log(j.deviceCm == null
+      ? `Rep ${j.n}: device height cleared.`
+      : `Rep ${j.n}: device height ${U.fmtU("height", j.deviceCm)} logged (est ${U.fmtU("height", j.estCm)}).`);
+  });
 
   // ---------- first-step quickness ----------
   function armGo() {
@@ -357,21 +370,23 @@
     };
     sp.trials.push(trial);
     $("sp-time").textContent = (trial.tN / 1000).toFixed(2);
-    $("sp-v").textContent = vN != null ? vN.toFixed(2) : "—";
-    $("sp-acc").textContent = trial.accel != null ? trial.accel.toFixed(2) : "—";
+    U.put($("sp-v"), "speed", vN);
+    U.put($("sp-acc"), "accel", trial.accel);
     $("sp-split3").textContent = trial.t3 != null ? (trial.t3 / 1000).toFixed(2) : "—";
     const maxV = Math.max(...trial.steps.map((s) => s.v ?? 0), 1);
     $("sp-bars").innerHTML = trial.steps.map((s) =>
-      `<div class="bar ${s.side === "right" ? "R" : ""}" title="step ${s.step} · ${s.tMs} ms" style="height:${Math.max(8, ((s.v ?? 0) / maxV) * 78)}%"><span>${s.v != null ? s.v.toFixed(1) : "·"}</span></div>`).join("");
+      `<div class="bar ${s.side === "right" ? "R" : ""}" title="step ${s.step} · ${s.tMs} ms" style="height:${Math.max(8, ((s.v ?? 0) / maxV) * 78)}%"><span data-kind="speed" data-digits="1" data-base="${s.v ?? ""}"></span></div>`).join("");
+    U.bind($("sp-bars"));
     $("sp-table").querySelector("tbody").insertAdjacentHTML("afterbegin",
       `<tr><td>${trial.n}</td><td>${trial.startSide}</td><td>${trial.N}</td><td>${trial.t3 ?? "—"}</td><td>${trial.tN}</td>
-       <td>${vN != null ? vN.toFixed(2) : "—"}</td><td>${trial.accel != null ? trial.accel.toFixed(2) : "—"}</td>
+       <td data-kind="speed" data-base="${vN ?? ""}"></td><td data-kind="accel" data-base="${trial.accel ?? ""}"></td>
        <td><input type="number" step="0.01" placeholder="—" data-sprint="${trial.n}" /></td></tr>`);
+    U.bind($("sp-table").querySelector("tbody").firstElementChild);
     $("sp-table").querySelector("input").addEventListener("change", (e) => {
       const tr = sp.trials.find((x) => x.n === Number(e.target.dataset.sprint));
-      if (tr) { tr.gate = Number(e.target.value); log(`Sprint ${tr.n}: gate time ${tr.gate}s logged (est ${(tr.tN / 1000).toFixed(2)}s).`); }
+      if (tr) { tr.gate = e.target.value === "" ? null : Number(e.target.value); log(`Sprint ${tr.n}: gate time ${tr.gate}s logged (est ${(tr.tN / 1000).toFixed(2)}s).`); }   // seconds — no unit conversion
     });
-    log(`Sprint #${trial.n}: ${trial.N} steps in ${(trial.tN / 1000).toFixed(2)}s${vN != null ? ` → ${vN.toFixed(2)} m/s` : ""}${timedOut ? " (timeout)" : ""}.`, "ok");
+    log(`Sprint #${trial.n}: ${trial.N} steps in ${(trial.tN / 1000).toFixed(2)}s${vN != null ? ` → ${U.fmtU("speed", vN)}` : ""}${timedOut ? " (timeout)" : ""}.`, "ok");
   }
 
   // ---------- per-foot ZUPT speed (world-frame linear acceleration) ----------
@@ -412,11 +427,11 @@
   }
   function renderSpeed() {
     const l = S.peakSpeed.left, r = S.peakSpeed.right;
-    $("speed-L").textContent = l != null ? l.toFixed(2) : "—";
-    $("speed-R").textContent = r != null ? r.toFixed(2) : "—";
+    U.put($("speed-L"), "speed", l);
+    U.put($("speed-R"), "speed", r);
     const best = Math.max(l ?? 0, r ?? 0);
-    $("speed-fts").textContent = best ? (best * 3.28084).toFixed(1) : "—";
-    $("stride-m").textContent = S.lastStride != null ? S.lastStride.toFixed(2) : "—";
+    U.put($("speed-best"), "speed", best || null);
+    U.put($("stride"), "dist", S.lastStride);
   }
 
   // ---------- wrist arm-drive ----------
@@ -436,7 +451,8 @@
     const w = S.wrist;
     if (w.peak > 0.3) {
       w.best = Math.max(w.best ?? 0, w.peak);
-      $("wrist-speed").textContent = w.peak.toFixed(2);
+      w.last = w.peak;
+      U.put($("wrist-speed"), "speed", w.last);
     }
     w.peak = 0; w.v = [0, 0, 0];
   }
@@ -453,8 +469,9 @@
 
   // ---------- CSV export (features + ground truth → calibration fits) ----------
   function exportCsv() {
-    const lines = ["kind,n,foot,flight_ms,est_in,device_in,reaction_ms,pushoff_ms,contact_ms,peak_speed_ms,dir,az_deg,t3_ms,tN_ms,accel_ms2,gate_s"];
-    for (const j of S.jumps) lines.push(`jump,${j.n},${j.foot},${j.flightMs},${j.estIn.toFixed(2)},${j.deviceIn ?? ""},,,,,,,,,,`);
+    // metric throughout, whatever the display switch says (est_cm / device_cm in cm)
+    const lines = ["kind,n,foot,flight_ms,est_cm,device_cm,reaction_ms,pushoff_ms,contact_ms,peak_speed_ms,dir,az_deg,t3_ms,tN_ms,accel_ms2,gate_s"];
+    for (const j of S.jumps) lines.push(`jump,${j.n},${j.foot},${j.flightMs},${j.estCm.toFixed(2)},${j.deviceCm != null ? j.deviceCm.toFixed(2) : ""},,,,,,,,,,`);
     for (const t of S.fs.trials) lines.push(`first_step,${t.n},${t.side},,,,${t.reactionMs},${t.pushMs},${t.stepMs},,${t.dir ?? ""},${t.azDeg ?? ""},,,,`);
     for (const tr of S.sprint.trials) {
       lines.push(`sprint,${tr.n},${tr.startSide},,,,,,,${tr.vN != null ? tr.vN.toFixed(3) : ""},,,${tr.t3 ?? ""},${tr.tN},${tr.accel != null ? tr.accel.toFixed(3) : ""},${tr.gate ?? ""}`);
@@ -636,6 +653,7 @@
     if (e.code === "KeyS") armSprint();
   });
   S.sprint.n = CFG.sprintStepsDefault;
+  U.init($("units-seg"));
   drawPolar();
   log("Ready. Connect insoles (+ optional wrist Sense) or hit Simulate.");
 })();

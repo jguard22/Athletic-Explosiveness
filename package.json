@@ -1,0 +1,9 @@
+{
+  "name": "athletic-explosiveness-demo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Brilliant Wear athletic explosiveness demo (static page, no build)",
+  "scripts": {
+    "test": "node --test"
+  }
+}
