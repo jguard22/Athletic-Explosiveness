@@ -59,7 +59,7 @@ const fmt = {
   seconds: (s) => `${s.toFixed(2)} s`,
 };
 const say = (text) => { if (!els.live) return; els.live.textContent = ""; setTimeout(() => { els.live.textContent = text; }, 30); };
-const spoken = (cm) => `${U.fmt("height", cm)} ${U.get() === "imperial" ? "inches" : "centimeters"}`;
+const spoken = (cm) => `${U.fmt("height", cm)} ${U.get() === "imperial" ? COPY.words.inches : COPY.words.centimeters}`;
 
 // ---------------------------------------------------------------- the person's visit (one sitting), kept in this tab only
 function loadVisit(sim) {
@@ -173,7 +173,7 @@ function enterStation() {
 function refreshSub() {
   const sum = ctx.combine.summary(); if (!sum || !run) return;
   const id = ctx.combine.stationId;
-  if (id === "onefoot") run.setSub([{ label: "Left", on: !!sum.onefoot.L }, { label: "Right", on: !!sum.onefoot.R }]);
+  if (id === "onefoot") run.setSub([{ label: COPY.words.left, on: !!sum.onefoot.L }, { label: COPY.words.right, on: !!sum.onefoot.R }]);
   else if (id === "firststep") run.setSub([0, 1, 2].map((i) => ({ label: String(i + 1), on: i < sum.firststep.trials.length })));
   else if (id === "bounce") run.setSub([0, 1, 2].map((i) => ({ label: String(i + 1), on: i < sum.bounce.hops })));
   else run.setSub([]);
@@ -252,9 +252,9 @@ function onFeed(d) {
 function repView(rep) {
   switch (rep.kind) {
     case "leap": return { kind: "leap", label: COPY.stations.leap.name, value: rep.cm, valueKind: "height", judgment: rep.judgment, ghost: rep.prior, better: "higher", warmup: rep.warmup };
-    case "onefoot": return { kind: "onefoot", label: rep.side === "L" ? "Left foot" : "Right foot", value: rep.cm, valueKind: "height", judgment: rep.judgment, ghost: rep.prior, better: "higher", warmup: rep.warmup };
-    case "firststep": return { kind: "firststep", label: `${COPY.stations.firststep.name} ${rep.n} of ${rep.need}`, value: rep.stepMs, valueKind: "ms", judgment: rep.judgment, ghost: ctx.fun.bests.firstStep(), better: "lower" };
-    case "sprint": return { kind: "sprint", label: `${COPY.stations.sprint.name}, ${rep.n} steps`, value: rep.s, valueKind: "s", judgment: rep.judgment, ghost: rep.prior, better: "lower" };
+    case "onefoot": return { kind: "onefoot", label: rep.side === "L" ? COPY.words.leftFoot : COPY.words.rightFoot, value: rep.cm, valueKind: "height", judgment: rep.judgment, ghost: rep.prior, better: "higher", warmup: rep.warmup };
+    case "firststep": return { kind: "firststep", label: `${COPY.stations.firststep.name} ${COPY.words.ofTotal(rep.n, rep.need)}`, value: rep.stepMs, valueKind: "ms", judgment: rep.judgment, ghost: ctx.fun.bests.firstStep(), better: "lower" };
+    case "sprint": return { kind: "sprint", label: `${COPY.stations.sprint.name}, ${COPY.words.steps(rep.n)}`, value: rep.s, valueKind: "s", judgment: rep.judgment, ghost: rep.prior, better: "lower" };
     default: return { kind: "bounce", label: COPY.stations.bounce.name, value: rep.rsi, valueKind: "rsi", judgment: rep.judgment, ghost: rep.prior, better: "higher" };
   }
 }
@@ -262,7 +262,7 @@ function announcement(rep) {
   const j = rep.judgment.word;
   switch (rep.kind) {
     case "leap": return `${COPY.stage.live.leap(spoken(rep.cm))} ${j}.`;
-    case "onefoot": return `${COPY.stage.live.onefoot(rep.side === "L" ? "Left" : "Right", spoken(rep.cm))} ${j}.`;
+    case "onefoot": return `${COPY.stage.live.onefoot(rep.side === "L" ? COPY.words.left : COPY.words.right, spoken(rep.cm))} ${j}.`;
     case "firststep": return `${COPY.stage.live.firststep(rep.stepMs)} ${j}.`;
     case "sprint": return `${COPY.stage.live.sprint(rep.n, rep.s.toFixed(2))} ${j}.`;
     default: return COPY.stage.live.bounce;
@@ -492,7 +492,7 @@ window.addEventListener("bwfun", (e) => {
     case "cal.done": if (view === "run" && !ctx.sim && ctx.combine.stationId === "leap") run.setStatus(COPY.stage.standStill, { wait: false }); break;
     case "go": onGo(d.kind); break;
     case "jump": case "firststep": case "sprint": case "rsi": onFeed(d); break;
-    case "sprint.fail": if (view === "run" && ctx.combine.stationId === "sprint") { run.setGo(false); run.setStatus(COPY.stage.notEnough); scheduleArm(1200); } break;
+    case "sprint.fail": if (view === "run" && ctx.combine.stationId === "sprint") { clearTimeout(goWatch); run.setGo(false); run.setStatus(COPY.stage.notEnough); scheduleArm(1200); } break;
     case "truth": if (!ctx.sim) ensureReal(); ctx.fun.truth({ kind: d.kind, n: d.n, device: d.device, visitId: ctx.visit.id }); break;
     default: break;
   }

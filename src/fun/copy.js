@@ -165,6 +165,11 @@ export const COPY = {
     rematch: { title: "Rematch", desc: "Finish a second Combine in one visit." },
     pb_leap: { title: "New High", desc: "Beat your two-foot best." },
   },
+  words: {
+    left: "Left", right: "Right", leftFoot: "Left foot", rightFoot: "Right foot", ms: "ms", s: "s", rsi: "RSI", apart: "apart",
+    steps: (n) => `${n} steps`, hops: (n) => `${n} hops`, split3: (s) => `3-step ${s} s`, inches: "inches", centimeters: "centimeters",
+    simStop: "Stop simulating", ofTotal: (n, total) => `${n} of ${total}`,
+  },
   heat: ["Spark", "Charge", "Surge", "Blaze", "Nova"],
   titles: ["Walk-On", "Prospect", "Starter", "Rotation", "Contender", "All-Star", "Franchise", "Hall of Flame"],
   xpLabels: {

@@ -56,7 +56,7 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
       o.safety ? h("div", { class: "ae-safety", role: "note" }, h("span", {}, COPY.safety.line), button(COPY.safety.ok, o.act.ackSafety)) : null,
       h("div", { class: "ae-actions" },
         button(COPY.hero.start, o.act.start, "primary ae-big", { id: "ae-start", disabled: !o.can.ok }),
-        button(o.sim ? "Stop simulating" : COPY.hero.sim, o.act.sim, "ae-ghost", { id: "ae-sim" })),
+        button(o.sim ? COPY.words.simStop : COPY.hero.sim, o.act.sim, "ae-ghost", { id: "ae-sim" })),
       o.can.ok ? h("p", { class: "ae-hint" }, o.sim ? COPY.hero.simOn : COPY.hero.simHint)
         : h("p", { class: "ae-rest", id: "ae-rest-line" }, o.can.reason === "cap" ? COPY.card.cap : `${COPY.card.restLine} ${COPY.card.rematchIn(mmss(o.can.waitMs))}`),
       o.can.reason === "rest" ? button(COPY.card.rested, o.act.rested, "ae-ghost", { id: "ae-rested" }) : null,
@@ -148,7 +148,7 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
         const final = (v) => (rep.valueKind === "height" ? U.fmt("height", v) : rep.valueKind === "ms" ? String(Math.round(v)) : v.toFixed(2));
         if (rep.valueKind === "height") { numEl.dataset.kind = "height"; numEl.dataset.base = String(rep.value); }
         const unitEl = rep.valueKind === "height" ? h("span", { class: "ae-unit", "data-u": "height" }, U.unit("height"))
-          : h("span", { class: "ae-unit" }, rep.valueKind === "ms" ? "ms" : rep.valueKind === "s" ? "s" : "RSI");
+          : h("span", { class: "ae-unit" }, rep.valueKind === "ms" ? COPY.words.ms : rep.valueKind === "s" ? COPY.words.s : COPY.words.rsi);
         const near = nearLine(rep);
         const fill = h("span", { class: "ae-meter-fill", style: { "--ae-fill": `${meter.fill}%` } });
         const ghostMark = meter.ghost != null ? h("span", { class: "ae-meter-ghost", style: { "--ae-ghost": `${meter.ghost}%` } }) : null;
@@ -174,8 +174,8 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
 
   function ghostValue(rep) {
     if (rep.valueKind === "height") return uval("height", rep.ghost);
-    if (rep.valueKind === "ms") return h("span", {}, `${Math.round(rep.ghost)} ms`);
-    if (rep.valueKind === "s") return h("span", {}, `${rep.ghost.toFixed(2)} s`);
+    if (rep.valueKind === "ms") return h("span", {}, `${Math.round(rep.ghost)} ${COPY.words.ms}`);
+    if (rep.valueKind === "s") return h("span", {}, `${rep.ghost.toFixed(2)} ${COPY.words.s}`);
     return h("span", {}, rep.ghost.toFixed(2));
   }
   /** "0.8 cm off your best" / "1.2 cm past your best" / "Level with your best" (null for a first mark or a warm-up) */
@@ -187,7 +187,7 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
     const past = lowerBetter ? diff < 0 : diff > 0;
     const gap = Math.abs(diff);
     const gapEl = rep.valueKind === "height" ? uval("height", gap, { trim: false })
-      : rep.valueKind === "ms" ? h("span", {}, `${Math.round(gap)} ms`) : rep.valueKind === "s" ? h("span", {}, `${gap.toFixed(2)} s`) : h("span", {}, gap.toFixed(2));
+      : rep.valueKind === "ms" ? h("span", {}, `${Math.round(gap)} ${COPY.words.ms}`) : rep.valueKind === "s" ? h("span", {}, `${gap.toFixed(2)} ${COPY.words.s}`) : h("span", {}, gap.toFixed(2));
     const line = h("span", { class: "ae-near" });
     // build "<gap> past your best" with the gap as a live value
     const [pre, post] = (past ? COPY.near.pb("\u0000") : COPY.near.off("\u0000")).split("\u0000");
@@ -236,7 +236,7 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
       h("div", { class: "ae-card-head" }, h("h3", { class: "ae-card-title", id: "ae-card-h" }, COPY.card.title), o.sim ? h("span", { class: "ae-tag" }, COPY.card.simTag) : null),
       heat, stamps,
       story.length ? h("p", { class: "ae-story" }, story.join(" ")) : null,
-      bal ? h("p", { class: "ae-line" }, "L ", uval("height", bal.l), " / R ", uval("height", bal.r), `: ${bal.pct}%`, " ", "apart") : null,
+      bal ? h("p", { class: "ae-line" }, `${COPY.words.left[0]} `, uval("height", bal.l), ` / ${COPY.words.right[0]} `, uval("height", bal.r), `: ${bal.pct}% ${COPY.words.apart}`) : null,
       o.xp ? h("p", { class: "ae-xp-line" }, COPY.card.xp(o.xp.gained), o.level ? ` · ${COPY.card.level(o.level.level, o.level.title)}` : "") : null,
       o.sim ? h("p", { class: "ae-note" }, COPY.card.simNote) : null,
       sum.warmupOnly && !o.sim ? h("p", { class: "ae-note" }, COPY.card.warmNote) : null,
@@ -276,17 +276,17 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
       if (sum.leap.warmup) subs.append(h("span", { class: "ae-tag" }, COPY.stage.warmupTag));
     } else if (s.id === "onefoot") {
       val.append(uval("height", sum.onefoot.anyBest));
-      subs.append(h("span", {}, "L ", uval("height", sum.onefoot.L.cm), " / R ", uval("height", sum.onefoot.R.cm)));
+      subs.append(h("span", {}, `${COPY.words.left[0]} `, uval("height", sum.onefoot.L.cm), ` / ${COPY.words.right[0]} `, uval("height", sum.onefoot.R.cm)));
       const j = [sum.onefoot.L, sum.onefoot.R].sort((a, b) => b.cm - a.cm)[0].judgment;
       subs.append(judgeChip(j));
     } else if (s.id === "firststep") {
       const best = sum.firststep.trials.reduce((a, t) => (t.stepMs < a.stepMs ? t : a));
-      val.textContent = `${best.stepMs} ms`; subs.append(judgeChip(best.judgment), h("span", {}, `${sum.firststep.trials.length} steps`));
+      val.textContent = `${best.stepMs} ${COPY.words.ms}`; subs.append(judgeChip(best.judgment), h("span", {}, COPY.words.steps(sum.firststep.trials.length)));
     } else if (s.id === "sprint") {
-      val.textContent = `${sum.sprint.s.toFixed(2)} s`; subs.append(judgeChip(sum.sprint.judgment), h("span", {}, `${sum.sprint.n} steps`));
-      if (sum.sprint.split3 != null) subs.append(h("span", {}, `3-step ${sum.sprint.split3.toFixed(2)} s`));
+      val.textContent = `${sum.sprint.s.toFixed(2)} ${COPY.words.s}`; subs.append(judgeChip(sum.sprint.judgment), h("span", {}, COPY.words.steps(sum.sprint.n)));
+      if (sum.sprint.split3 != null) subs.append(h("span", {}, COPY.words.split3(sum.sprint.split3.toFixed(2))));
     } else if (s.id === "bounce") {
-      val.textContent = sum.bounce.rsi.toFixed(2); subs.append(sum.bounce.judgment ? judgeChip(sum.bounce.judgment) : "", h("span", {}, `${sum.bounce.hops} hops`));
+      val.textContent = sum.bounce.rsi.toFixed(2); subs.append(sum.bounce.judgment ? judgeChip(sum.bounce.judgment) : "", h("span", {}, COPY.words.hops(sum.bounce.hops)));
     }
     li.append(val);
     if (subs.childNodes.length) li.append(subs);

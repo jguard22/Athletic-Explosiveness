@@ -211,3 +211,15 @@ test("the XP ledger really pays the round's total in one award (ties the table t
   assert.equal(res.title, "Starter");
   assert.equal(res.levelUp, true);
 });
+
+test("the ghost bar: a PB always reaches past the ghost mark, for a height and for a time", () => {
+  const hi = C.meterPcts("higher", 35, 33);
+  assert.ok(hi.fill > hi.ghost && hi.fill < 100, "the new bar is longer than the ghost mark, with headroom");
+  const lo = C.meterPcts("lower", 1.8, 2.0);          // a faster time is a longer bar
+  assert.ok(lo.fill > lo.ghost);
+  const behind = C.meterPcts("lower", 2.2, 2.0);
+  assert.ok(behind.fill < behind.ghost);
+  assert.deepEqual(C.meterPcts("higher", 30, null), { fill: 100, ghost: null }, "a first mark has no ghost");
+  assert.deepEqual(C.meterPcts("higher", 0, 30), { fill: 0, ghost: null });
+  assert.equal(C.meterPcts("higher", 33, 33).fill, C.meterPcts("higher", 33, 33).ghost);
+});

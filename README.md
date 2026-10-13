@@ -117,10 +117,96 @@ directly. **Always metric, whatever the display switch says:** `est_cm`,
 (`est_in` / `device_in` from the first draft were renamed to the cm columns
 when the units switch landed — update any saved fit scripts.)
 
+## Combine (the engagement layer)
+The page opens in **Combine mode**: two minutes, five stations (two-foot leap,
+one foot at a time, first step x3, sprint, bounce), one **Explosiveness Card**
+(five stamps, Heat flames, a line of story) and a rematch. The dashboard above
+is untouched and is **Lab mode**.
+
+| URL | What you get |
+|---|---|
+| `index.html` | Combine (or the mode you last chose with the header Combine / Lab switch) |
+| `?mode=lab` | the original dashboard, with the switch (not remembered) |
+| `?fun=0` | the original page, byte for byte: no layer module, no kit file is fetched |
+| `?booth=1` | booth mode: no profile, each visitor starts fresh, "Next visitor" resets (remembered) |
+
+No insoles? **Simulate** plays a whole Combine for you: first stamp at about 1.6 s,
+the Card at about 18 s. Nothing simulated is ever saved, ranked or put on the board.
+
+**Files** (`src/fun/`): `early.js` (classic script in `<head>`: mode, theme,
+motion), `boot.js` (loads the layer only when it is on), `layer.js` (controller),
+`ui.js` (drawing), `fun.js` (the one kit config, the sounds and the quiet gate),
+`config.js` / `combine.js` (rules and the station state machine, pure),
+`board.js`, `stats.js`, `copy.js` (every word), `tokens.css` (the only raw colours
+and sizes, both themes), `fun.css` (tokens only). The kit is vendored,
+untouched, in `src/vendor/fun-kit/` (see its `VERSION`).
+
+**How it talks to the page.** `app.js` only *reports*: `bwfun` events (`jump`,
+`firststep`, `sprint`, `rsi`, `go`, `cal.start`, `cal.done`, `sim`, `truth`) with
+metric values, plus a frozen `window.BWAE` with nine small controls (is a
+measurement running, arm a drill, stop a drill, park / replay the Simulate script).
+It never imports the layer, and a test greps that it never mentions the kit.
+
+**Rules worth knowing** (all app-side and tested, `test/fun-config.test.mjs`):
+- Judgments are relative to you: PB! / Photo finish / Close / Warm-up for jumps and
+  sprints, Lightning / Quick / Ready / Calibrating against your own median for first
+  steps. Each is a shape plus a word, never colour alone.
+- Heat is 1 to 5 flames: finishing the circuit and beating your *previous visit's*
+  Card. A first-time visitor tops out at 3; a same-visit rematch cannot add flames.
+- Maximal efforts get a real rest: a visible two-minute countdown before a
+  same-visit rematch ("I'm rested" ends it early), two Combines per visit, and the
+  first three jumps of a visit are warm-ups (no best, no board) until "I'm warm".
+  Simulate has no body to rest, so neither rule applies there.
+- XP caps: 5 jumps per jump station, 6 first steps, 3 sprints per round; a daily soft
+  cap of 120. Ground-truth pairs pay a flat 2 XP inside physical plausibility
+  (5 to 120 cm, 0.5 to 4 s), at most 20 XP a day, and agreement with the estimate is
+  never a condition (a revised entry replaces, it never adds).
+- Rewards (sound, particles, toasts, the level-up dialog, the PB ribbon) all go
+  through **one quiet gate**, shut while a calibration, GO window, sprint or flight
+  is being read and for 300 ms after each edge. The measured result itself (number,
+  judgment, stamp) shows at once. No haptic is sent today (no device send is wired,
+  `TODO[SDK]`); every cue has a picture and a word, and results are announced to
+  screen readers.
+- Metric / imperial everywhere: values are drawn from `data-base` (metric) and
+  repaint when the switch flips; the Card, board, near-miss lines and Moon line too.
+
+**Saved on this device only:** the kit's profile (`fk:ae-demo:*`, created when a
+Combine on a body first finishes, never by Simulate), the board (`bw-ae-board`),
+local fun stats (`bw-ae-stats`: counts of named events, the one-tap "Loved it /
+Fine / Not for me" and the first-win time, no body or sensor value), and a few
+choices (`bw-ae-mode|theme|motion|sound|booth|safety`). **Settings and privacy**
+has Sound, Motion (Auto / Reduced / Full), Theme (Auto / Light / Dark), booth mode,
+the stats CSV, Clear the board, and **Forget my data** (`kit.reset()` plus the
+board and stats; two taps, no browser dialog).
+
+**Easter eggs (for fun, never scored):** press `M` for Moon mode, `J` for Jupiter.
+
+**Not built yet (P2 and later):** the full 23 badges, daily and weekly challenges,
+quests, athlete tags and the weekly goal, the share card, Pass-the-Laptop Duel,
+cosmetics, seasonal events, kiosk attract mode, device haptics.
+
 ## Tests
-`npm test` runs `test/units.test.js` (Node's built-in runner, no install):
-conversions, locale default, persistence, the ground-truth round trip, the
-self-repainting `html()` markup used by the log, and the `data-empty` placeholder.
+`npm test` runs everything with Node's built-in runner (no install):
+- `units.test.js`: conversions, locale default, persistence, the ground-truth round
+  trip, the self-repainting `html()` markup, the `data-empty` placeholder.
+- `fun-config`: judgment edges, Heat, XP and caps, the level curve through the kit's
+  `xpToReach`, rest and visit rules, plausibility, Moon maths, the copy lint.
+- `fun-combine`: the station state machine driven with the page's own events.
+- `fun-kit`: the layer against the real vendored kit (XP, badges, Heat from the last
+  visit, the demo twin, Forget my data, the first-win clock, ground truth, the gate).
+- `fun-local`: the board and the stats.
+- `fun-boundaries`: safety and measurement code never imports the kit, one gate for
+  every reward, one `createFunKit`, only named events.
+- `fun-hygiene`: the sibling apps' lint rules over the tree with the vendored kit,
+  tokens only, nothing flashes, a reduced-motion twin for every animation.
+
+`npm run smoke` (needs Google Chrome and `playwright-core`; about 2.5 minutes) drives
+the page headlessly: `?fun=0` and `?mode=lab`, a Simulate Combine, the Metric /
+Imperial repaint, a real round fed with the page's own events, the board, the rest
+rule, Forget my data, the motion and theme controls, zero console errors, no
+horizontal scroll at 390 and 414 px, and it saves the shots in
+`docs/screenshots/fun/` (390 px, light, dark and reduced motion).
+`npm run serve` serves the page on port 5492.
 
 ## SDK notes
 All hardware touchpoints live in `SDKAdapter` (app.js) — `BS.DevicePair.insoles`
