@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "description": "Brilliant Wear athletic explosiveness demo (static page, no build)",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "serve": "node scripts/serve.mjs",
+    "smoke": "node scripts/smoke.mjs"
   }
 }
