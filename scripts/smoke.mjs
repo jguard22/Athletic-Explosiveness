@@ -1,7 +1,8 @@
 // Headless smoke test and screenshots of the Combine layer, in system Chrome (playwright-core).
 //   node scripts/smoke.mjs [outdir]            (default: docs/screenshots/fun)
 // Starts the static server on :5492 (PORT to override). Checks, with zero console errors allowed:
-//   - ?fun=0 is the original page (no layer attribute, no kit file fetched), ?mode=lab shows the dashboard
+//   - ?fun=0 is the original page (no layer attribute, no layer module and no kit file fetched; the four small static files early.js,
+//     tokens.css, fun.css and boot.js are still requested and do nothing), ?mode=lab shows the dashboard
 //   - Simulate: first jump within about 2 s, the first win under 60 s, the Card inside 20 s, five stamps, no page-wide horizontal scroll
 //   - the Metric / Imperial switch repaints the Card
 //   - a real (non-simulated) round driven with the page's own events: warm-up rule, board entry, rank, Forget my data leaves nothing
@@ -55,7 +56,7 @@ async function settle(page) {
   for (let i = 0; i < 60; i++) {
     const modal = await page.$(".fk-modal button");
     if (modal) { await modal.click(); await page.waitForTimeout(500); }
-    const busy = await page.evaluate(() => document.querySelectorAll(".fk-toast, .fk-modal, canvas.fk-fx, .fk-glow").length + (window.BWFun.gate().busy ? 1 : 0));
+    const busy = await page.evaluate(() => document.querySelectorAll(".fk-toast, .fk-modal, canvas.fk-fx-canvas, .fk-glow").length + (window.BWFun.gate().busy ? 1 : 0));
     if (!busy) break;
     await page.waitForTimeout(250);
   }
@@ -89,6 +90,8 @@ try {
     await page.waitForTimeout(600);
     check(await page.evaluate(() => !document.documentElement.hasAttribute("data-fun")), "?fun=0: no layer attribute on <html>");
     check(!requested.some((p) => /layer\.js|vendor\/fun-kit/.test(p)), "?fun=0: no kit file and no layer module is fetched");
+    const own = requested.filter((p) => p.startsWith("/src/")).sort();
+    check(JSON.stringify(own) === JSON.stringify(["/src/fun/boot.js", "/src/fun/early.js", "/src/fun/fun.css", "/src/fun/tokens.css"]), `?fun=0: only the four small static files of the layer are requested (${own.join(", ")}) and they do nothing`);
     check(await page.evaluate(() => getComputedStyle(document.getElementById("lab-grid")).display !== "none" && getComputedStyle(document.getElementById("fun-stage")).display === "none"), "?fun=0: the lab dashboard shows and the Combine stage does not");
     check(await page.evaluate(() => getComputedStyle(document.body).backgroundImage.includes("gradient") && document.documentElement.getAttribute("data-theme") === null), "?fun=0: dark original styling, no theme attribute");
     check(await page.evaluate(() => typeof window.BWFun === "undefined" && typeof window.BWAE === "object"), "?fun=0: the page's own bridge is there, the layer is not");
@@ -147,7 +150,9 @@ try {
     check(/ in$/.test(before) && / cm$/.test(afterMetric) && afterImp === before, `Metric / Imperial repaints the Card (${before} -> ${afterMetric} -> ${afterImp})`);
     check(await page.evaluate(() => /cm|in/.test(document.querySelector('[data-kind="height"]').textContent) || true), "values are drawn from data-base (metric underneath)");
     check(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("fk:")).length === 0), "a simulated Combine writes nothing to the real profile");
-    check(await page.evaluate(() => document.getElementById("ae-board-body").textContent.includes("never reach the board") || document.getElementById("ae-card").textContent.includes("never reach the board")), "Simulated results are labelled and kept off the board");
+    check(await page.evaluate(() => document.getElementById("ae-card").textContent.includes("never on the board")), "Simulated results are labelled and kept off the board");
+    check(await page.evaluate(() => !document.querySelector(".fk-modal") && !document.querySelector(".fk-toast")), "a simulated athlete gets no level-up dialog and no badge toast");
+    check(await page.evaluate(() => document.querySelectorAll("#ae-card .ae-note").length <= 1), "the Card carries at most one note line");
 
     // Combine / Lab switch and lab details
     await page.click('#mode-seg button[data-mode="lab"]');
@@ -177,7 +182,7 @@ try {
     check((await page.$("#ae-sim-inline")) !== null && (await page.$("#ae-connect")) !== null, "Connect insoles and Simulate are right there");
     // a first jump with the first-win clock: warm-up applies
     await evt(page, { type: "jump", rep: { n: 1, foot: "BOTH", flightMs: 520, estCm: 33.1 } });
-    check(await page.evaluate(() => document.querySelector("#ae-result .ae-judge")?.textContent.includes("Warm-up")), "the first jump of a real visit is a Warm-up (no best, no PB)");
+    check(await page.evaluate(() => document.querySelector("#ae-result .ae-judge")?.textContent.includes("First leap") && document.querySelector("#ae-result .ae-tag")?.textContent.includes("Warm-up")), "the first jump of a real visit is celebrated as a First leap, tagged Warm-up (no best, no PB)");
     const fw = await page.evaluate(() => window.BWFun.firstWin());
     check(fw.done && fw.timeToWinMs < 60000, `the first win lands too (${fw.timeToWinMs} ms)`);
     await page.click("#ae-stop");
@@ -228,7 +233,7 @@ try {
     check(await page.evaluate(() => /Tap again/.test(document.querySelector("#ae-settings-body .ae-danger.is-armed")?.textContent ?? "")), "Forget my data asks first (no browser dialog)");
     await page.click('#ae-settings-body button:has-text("Tap again to forget")');
     await page.waitForTimeout(300);
-    check((await keysLike(page, "^fk:")).length === 0 && (await keysLike(page, "^bw-ae-(board|stats|safety)$")).length === 0, "Forget my data (kit.reset) leaves no kit, board or stats key behind");
+    check((await keysLike(page, "^fk:")).length === 0 && (await keysLike(page, "^bw-ae-(board|stats|safety|visit)$")).length === 0, "Forget my data (kit.reset) leaves no kit, board, visit or stats key behind");
     check(await page.evaluate(() => window.BWFun.xp().total === 0), "XP is back to zero after forgetting");
     await page.close();
   }

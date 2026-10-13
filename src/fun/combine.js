@@ -2,7 +2,7 @@
 // Pure: no DOM, no kit, no clock of its own (now() is passed in), so every rule here is covered by node:test.
 // It only ever READS what happened (a height, a time); it never decides how a measurement is taken.
 import {
-  STATIONS, STATION_IDS, CAPS, isWarmup, canStart, isFullCircuit, balance,
+  STATIONS, STATION_IDS, isWarmup, canStart, isFullCircuit, balance,
   judgeJump, judgeFirstStep, judgeSprint, judgeBounce,
 } from "./config.js";
 
@@ -12,7 +12,9 @@ const idle = () => ({ leap: "todo", onefoot: "todo", firststep: "todo", sprint: 
  * @param {{now?: () => number, sim?: boolean, visit: object, sprintN?: () => number,
  *   best?: {jump?: () => number|null, single?: () => number|null, sprint?: (n: number) => number|null, rsi?: () => number|null},
  *   history?: () => number[], onVisit?: () => void}} o
- *   visit    the person's sitting (config.newVisit): jumps counted for the warm-up rule, Combines counted for the cap and the rest
+ *   visit    the person's sitting (config.newVisit): jumps counted for the warm-up rule, Combines counted for the cap and the rest.
+ *            A Combine is counted when it FINISHES with at least one station done, never when it starts, so a reload, a closed tab
+ *            or a Start tapped by mistake burns nothing.
  *   best     all-time bests from the kit before this round (null when there is none yet)
  *   history  earlier first-step contact times (ms) for the median
  */
@@ -21,7 +23,7 @@ export function createCombine({ now = Date.now, sim = false, visit, sprintN = ()
 
   const fresh = (n) => ({
     id: `${visit.id}:${n}`, n, sim, startedAt: now(), endedAt: null, early: false, phase: "running", index: 0,
-    status: idle(), sprintN: sprintN(), prev: { lastEndAt: visit.lastEndAt, rested: visit.rested },
+    status: idle(), sprintN: sprintN(),
     leap: null, onefoot: { L: null, R: null }, firststep: { trials: [] }, sprint: null, bounce: { hops: 0, rsi: null, sets: 0 },
     counts: { leap: 0, onefoot: 0, firstSteps: 0, sprints: 0 },
     local: { jump: null, single: { L: null, R: null } }, // best non-warm-up marks inside this round, so a later rep is judged against an earlier one
@@ -39,11 +41,8 @@ export function createCombine({ now = Date.now, sim = false, visit, sprintN = ()
     const finished = STATION_IDS.filter((id) => R.status[id] === "done").length;
     R.phase = "done"; R.endedAt = now(); R.early = early;
     for (const id of STATION_IDS) if (R.status[id] === "todo") R.status[id] = early ? "notrun" : "skipped";
-    if (finished === 0) {
-      // nothing was done: it was no effort, so it neither counts toward the visit's two Combines nor starts a rest
-      visit.combines = Math.max(0, visit.combines - 1);
-      visit.lastEndAt = R.prev.lastEndAt; visit.rested = R.prev.rested;
-    } else { visit.lastEndAt = R.endedAt; visit.rested = false; }
+    // nothing done: it was no effort, so it neither counts toward the visit's two Combines nor starts a rest
+    if (finished > 0) { visit.combines++; visit.lastEndAt = R.endedAt; visit.rested = false; }
     onVisit();
   }
   const markDone = (id) => { R.status[id] = "done"; };
@@ -100,6 +99,8 @@ export function createCombine({ now = Date.now, sim = false, visit, sprintN = ()
 
   function feedSprint(trial) {
     if (stationId() !== "sprint") return { accepted: false, station: stationId(), reason: "not-this-station" };
+    // a sprint cut short by the timeout (fewer steps than asked) is not this station's result: go again
+    if (trial.N !== sprintN()) return { accepted: false, station: "sprint", reason: "short-sprint" };
     const s = trial.tN / 1000, n = trial.N;
     const prior = best.sprint?.(n) ?? null;
     const judgment = judgeSprint(s, prior);
@@ -127,8 +128,7 @@ export function createCombine({ now = Date.now, sim = false, visit, sprintN = ()
     start() {
       const can = canStart(visit, now(), sim);
       if (!can.ok) return { ok: false, ...can };
-      visit.combines++; onVisit();
-      R = fresh(visit.combines);
+      R = fresh(visit.combines + 1);
       return { ok: true, id: R.id, n: R.n };
     },
     /** Feed a page event ({type, ...}). Returns what the UI needs, or { accepted: false }. */

@@ -15,6 +15,8 @@ const mmss = (ms) => { const s = Math.ceil(ms / 1000); return `${Math.floor(s / 
 /** @param {{U: object, doc?: Document}} o  U is BWUnits */
 export function createUi({ U, doc = document }) {
   const $ = (id) => doc.getElementById(id);
+  // a result's spoken label carries a height and a gap: say them in the system the switch is on now, not the one it was drawn in
+  U.onChange?.(() => doc.querySelectorAll(".ae-meter").forEach((m) => m.relabel?.()));
 
   // ---------------------------------------------------------------- small pieces
   /** A value that repaints itself in the chosen system: "33.1 cm" / "13.0 in" (metric underneath). */
@@ -45,21 +47,25 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
 
   // ---------------------------------------------------------------- the stage: idle
   /**
-   * @param {{sim: boolean, booth: boolean, safety: boolean, last: object|null, can: {ok: boolean, reason: string|null, waitMs: number},
-   *   act: {start: Function, sim: Function, ackSafety: Function, rested: Function}}} o
+   * @param {{sim: boolean, booth: boolean, ble: boolean, safety: boolean, last: object|null, can: {ok: boolean, reason: string|null, waitMs: number},
+   *   act: {start: Function, sim: Function, ackSafety: Function, rested: Function, nextVisitor: Function}}} o
+   *   ble  false when this browser has no Web Bluetooth (iOS Safari, Firefox): Simulate becomes the main button, because Start cannot lead anywhere
    */
   function renderIdle(root, o) {
+    const noBle = o.ble === false && !o.sim;
+    const startBtn = button(COPY.hero.start, o.act.start, noBle ? "ae-big" : "primary ae-big", { id: "ae-start", disabled: !o.can.ok });
+    const simBtn = button(o.sim ? COPY.words.simStop : COPY.hero.sim, o.act.sim, noBle ? "primary ae-big" : "ae-ghost", { id: "ae-sim" });
     const hero = h("div", { class: "ae-hero" },
       h("p", { class: "ae-eyebrow" }, COPY.hero.eyebrow),
       h("h3", { class: "ae-title" }, COPY.hero.title),
       h("p", { class: "ae-sub" }, o.sim ? COPY.hero.simOn : COPY.hero.sub),
       o.safety ? h("div", { class: "ae-safety", role: "note" }, h("span", {}, COPY.safety.line), button(COPY.safety.ok, o.act.ackSafety)) : null,
-      h("div", { class: "ae-actions" },
-        button(COPY.hero.start, o.act.start, "primary ae-big", { id: "ae-start", disabled: !o.can.ok }),
-        button(o.sim ? COPY.words.simStop : COPY.hero.sim, o.act.sim, "ae-ghost", { id: "ae-sim" })),
-      o.can.ok ? h("p", { class: "ae-hint" }, o.sim ? COPY.hero.simOn : COPY.hero.simHint)
+      h("div", { class: "ae-actions" }, ...(noBle ? [simBtn, startBtn] : [startBtn, simBtn])),
+      o.can.ok ? h("p", { class: "ae-hint" }, o.sim ? COPY.hero.simOn : noBle ? COPY.hero.noBle : COPY.hero.simHint)
         : h("p", { class: "ae-rest", id: "ae-rest-line" }, o.can.reason === "cap" ? COPY.card.cap : `${COPY.card.restLine} ${COPY.card.rematchIn(mmss(o.can.waitMs))}`),
       o.can.reason === "rest" ? button(COPY.card.rested, o.act.rested, "ae-ghost", { id: "ae-rested" }) : null,
+      // capped: the way forward is the next person, so it is right here and not only on a Card that may be long gone
+      o.can.reason === "cap" ? button(COPY.card.nextVisitor, o.act.nextVisitor, "ae-ghost", { id: "ae-next" }) : null,
       o.last ? h("p", { class: "ae-last" }, COPY.card.lastCard(o.last.name || "—", o.last.flames)) : null);
     fill(root, hero);
     return hero;
@@ -136,7 +142,9 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
       /** no device yet: offer the two ways forward right where the person is looking */
       setDevicePrompt(show, { connect, sim }) {
         if (!show) return;
-        dev.replaceChildren(button(COPY.stage.connect, connect, "", { id: "ae-connect" }), button(COPY.stage.simulate, sim, "ae-ghost", { id: "ae-sim-inline" }));
+        fill(dev,
+          connect ? button(COPY.stage.connect, connect, "", { id: "ae-connect" }) : null,
+          button(COPY.stage.simulate, sim, connect ? "ae-ghost" : "primary", { id: "ae-sim-inline" }));
       },
       setSkipLabel(label) { $("ae-skip").textContent = label; },
       /** Show a result: count-up number, shape + word judgment, ghost bar. `fx` only decorates (the ribbon is added by the gated reward). */
@@ -146,18 +154,23 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
         const better = rep.better ?? "higher";
         const meter = C.meterPcts(better, rep.value, rep.ghost);
         const final = (v) => (rep.valueKind === "height" ? U.fmt("height", v) : rep.valueKind === "ms" ? String(Math.round(v)) : v.toFixed(2));
+        const unitText = () => (rep.valueKind === "height" ? U.unit("height") : rep.valueKind === "ms" ? COPY.words.ms : rep.valueKind === "s" ? COPY.words.s : COPY.words.score);
         if (rep.valueKind === "height") { numEl.dataset.kind = "height"; numEl.dataset.base = String(rep.value); }
         const unitEl = rep.valueKind === "height" ? h("span", { class: "ae-unit", "data-u": "height" }, U.unit("height"))
-          : h("span", { class: "ae-unit" }, rep.valueKind === "ms" ? COPY.words.ms : rep.valueKind === "s" ? COPY.words.s : COPY.words.rsi);
+          : h("span", { class: "ae-unit" }, unitText());
         const near = nearLine(rep);
-        const fill = h("span", { class: "ae-meter-fill", style: { "--ae-fill": `${meter.fill}%` } });
+        const fillEl = h("span", { class: "ae-meter-fill", style: { "--ae-fill": `${meter.fill}%` } });
         const ghostMark = meter.ghost != null ? h("span", { class: "ae-meter-ghost", style: { "--ae-ghost": `${meter.ghost}%` } }) : null;
+        // the meter's spoken label is built from the live number and gap, and rebuilt when Metric / Imperial flips (see relabelMeters)
+        const meterEl = h("div", { class: "ae-meter", role: "img" }, fillEl, ghostMark);
+        meterEl.relabel = () => meterEl.setAttribute("aria-label", `${rep.label}: ${final(rep.value)} ${unitText()}${near ? `, ${near.textContent}` : ""}`);
+        meterEl.relabel();
         const res = h("div", { class: "ae-result is-fresh", id: "ae-result", "data-judge": rep.judgment.id },
           h("span", { class: "ae-ribbon", "aria-hidden": "true" }, COPY.judge.pb),
           h("p", { class: "ae-result-label" }, rep.label),
           h("p", { class: "ae-result-line" }, numEl, unitEl),
-          h("p", { class: "ae-judge-row" }, judgeChip(rep.judgment), rep.warmup ? h("span", { class: "ae-tag" }, COPY.stage.warmupTag) : null, near),
-          h("div", { class: "ae-meter", role: "img", "aria-label": `${rep.label}: ${near ? near.textContent : final(rep.value)}` }, fill, ghostMark),
+          h("p", { class: "ae-judge-row" }, judgeChip(rep.judgment), rep.warmup && rep.judgment.id !== "warmup" ? h("span", { class: "ae-tag" }, COPY.stage.warmupTag) : null, near),
+          meterEl,
           rep.ghost != null ? h("div", { class: "ae-meter-legend" }, h("span", { class: "ae-key" }, rep.label), h("span", { class: "ae-key is-ghost" }, COPY.near.best, " ", ghostValue(rep))) : null,
           h("p", { class: "ae-fun", id: "ae-fun" }));
         slot.replaceChildren(res);
@@ -199,8 +212,9 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
 
   // ---------------------------------------------------------------- the stage: the Card
   /**
-   * @param {{sum: object, heat: object, story: object, xp: object|null, level: object|null, sim: boolean, canBoard: boolean, boardNote: string,
-   *   pulseDue: boolean, can: object, act: object}} o
+   * @param {{sum: object, heat: object, story: object, xp: object|null, level: object|null, sim: boolean, booth: boolean, canBoard: boolean,
+   *   pulseDue: boolean, prevVisit: boolean, act: object}} o
+   *   booth  booth mode keeps no profile, so the Card shows no XP or level and makes no "come back" promise
    */
   function renderCard(root, o) {
     const { sum } = o;
@@ -212,6 +226,13 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
       flames, h("span", { class: "ae-heat-name" }, o.heat.name || "—"), h("span", { class: "ae-heat-n" }, COPY.card.flamesOf(o.heat.flames)));
 
     const bal = sum.onefoot.balance;
+    const progression = !(o.booth && !o.sim);
+    // at most one note under the Card's numbers: what matters most for this Card, said once
+    const note = o.sim ? COPY.card.simNote
+      : sum.warmupOnly ? COPY.card.warmNote
+      : sum.early ? null
+      : o.booth ? COPY.card.boothNote
+      : o.prevVisit ? COPY.card.prevNote : COPY.card.first;
     const story = [];
     if (o.story.strongest) story.push(COPY.card.strongest(COPY.stations[o.story.strongest].name.toLowerCase()));
     if (o.story.chase) story.push(COPY.card.chase(o.story.chase.kind === "foot" ? COPY.card.chaseFoot(o.story.chase.side.toLowerCase()) : COPY.stations[o.story.chase.id].name.toLowerCase()));
@@ -239,11 +260,9 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
       heat, stamps,
       story.length ? h("p", { class: "ae-story" }, story.join(" ")) : null,
       bal ? h("p", { class: "ae-line" }, `${COPY.words.left[0]} `, uval("height", bal.l), ` / ${COPY.words.right[0]} `, uval("height", bal.r), `: ${bal.pct}% ${COPY.words.apart}`) : null,
-      o.xp ? h("p", { class: "ae-xp-line" }, COPY.card.xp(o.xp.gained), o.level ? ` · ${COPY.card.level(o.level.level, o.level.title)}` : "") : null,
-      o.sim ? h("p", { class: "ae-note" }, COPY.card.simNote) : null,
-      sum.warmupOnly && !o.sim ? h("p", { class: "ae-note" }, COPY.card.warmNote) : null,
-      !sum.early && !o.sim ? h("p", { class: "ae-note" }, o.prevVisit ? COPY.card.prevNote : COPY.card.first) : null,
-      add, o.boardNote ? h("p", { class: "ae-note", id: "ae-board-note" }, o.boardNote) : null,
+      o.xp && progression ? h("p", { class: "ae-xp-line" }, COPY.card.xp(o.xp.gained), o.level ? ` · ${COPY.card.level(o.level.level, o.level.title)}` : "") : null,
+      note ? h("p", { class: "ae-note" }, note) : null,
+      add,
       restLine, restRow, pulse);
     fill(root, card);
 
@@ -276,7 +295,7 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
       val.textContent = status === "skipped" ? COPY.stage.stampSkipped : COPY.stage.stampNotRun;
     } else if (s.id === "leap") {
       val.append(uval("height", sum.leap.cm)); subs.append(judgeChip(sum.leap.judgment));
-      if (sum.leap.warmup) subs.append(h("span", { class: "ae-tag" }, COPY.stage.warmupTag));
+      if (sum.leap.warmup && sum.leap.judgment.id !== "warmup") subs.append(h("span", { class: "ae-tag" }, COPY.stage.warmupTag));
     } else if (s.id === "onefoot") {
       val.append(uval("height", sum.onefoot.anyBest));
       subs.append(h("span", {}, `${COPY.words.left[0]} `, uval("height", sum.onefoot.L.cm), ` / ${COPY.words.right[0]} `, uval("height", sum.onefoot.R.cm)));
@@ -289,7 +308,7 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
       val.textContent = `${sum.sprint.s.toFixed(2)} ${COPY.words.s}`; subs.append(judgeChip(sum.sprint.judgment), h("span", {}, COPY.words.steps(sum.sprint.n)));
       if (sum.sprint.split3 != null) subs.append(h("span", {}, COPY.words.split3(sum.sprint.split3.toFixed(2))));
     } else if (s.id === "bounce") {
-      val.textContent = sum.bounce.rsi.toFixed(2); subs.append(sum.bounce.judgment ? judgeChip(sum.bounce.judgment) : "", h("span", {}, COPY.words.hops(sum.bounce.hops)));
+      val.textContent = `${sum.bounce.rsi.toFixed(2)} ${COPY.words.score}`; subs.append(sum.bounce.judgment ? judgeChip(sum.bounce.judgment) : "", h("span", {}, COPY.words.hops(sum.bounce.hops)));
     }
     li.append(val);
     if (subs.childNodes.length) li.append(subs);
@@ -322,6 +341,7 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
       ...opts.map(([id, label]) => h("button", { type: "button", class: id === cur ? "on" : "", "aria-pressed": id === cur ? "true" : "false", onclick: () => onPick(id) }, label)));
     const check = (id, label, on, onChange) => h("label", { class: "ae-check", for: id }, h("input", { type: "checkbox", id, checked: on || null, onchange: (e) => onChange(e.target.checked) }), label);
     const armed = new Set();
+    const staff = o.staff !== false;   // false: a visitor on a booth device
     const sure = (label, sureLabel, run, cls = "ae-danger") => {
       const b = h("button", { type: "button", class: cls }, label);
       let t = null;
@@ -335,13 +355,14 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
       h("div", { class: "ae-field" }, h("span", { class: "ae-label" }, COPY.settings.sound), seg(COPY.settings.sound, [["on", COPY.stage.soundOn], ["off", COPY.stage.soundOff]], o.sound ? "on" : "off", (id) => o.act.sound(id === "on"))),
       h("div", { class: "ae-field" }, h("span", { class: "ae-label" }, COPY.settings.motion), seg(COPY.settings.motion, COPY.settings.motionOpts, o.motion, o.act.motion)),
       h("div", { class: "ae-field" }, h("span", { class: "ae-label" }, COPY.settings.theme), seg(COPY.settings.theme, COPY.settings.themeOpts, o.theme, o.act.theme)),
-      check("ae-booth", COPY.settings.booth, o.booth, o.act.booth),
+      // staff controls: on a booth tablet a visitor sees sound, motion and theme only; the booth switch, the board and the data are staff's
+      staff ? check("ae-booth", COPY.settings.booth, o.booth, o.act.booth) : null,
       check("ae-moon", COPY.settings.moon, o.moon, (v) => o.act.play("moon", v)),
       check("ae-jupiter", COPY.settings.jupiter, o.jupiter, (v) => o.act.play("jupiter", v)),
-      h("div", { class: "ae-actions" },
+      staff ? h("div", { class: "ae-actions" },
         button(COPY.settings.stats, o.act.stats),
         sure(COPY.settings.clearBoard, COPY.settings.clearBoardSure, o.act.clearBoard),
-        sure(COPY.settings.forget, COPY.settings.forgetSure, o.act.forget)),
+        sure(COPY.settings.forget, COPY.settings.forgetSure, o.act.forget)) : null,
       h("p", { class: "ae-note", id: "ae-forgot" }),
       h("p", { class: "ae-note" }, COPY.settings.privacy),
       h("p", { class: "ae-note" }, COPY.settings.haptics));

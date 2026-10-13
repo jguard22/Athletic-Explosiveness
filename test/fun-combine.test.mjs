@@ -132,7 +132,7 @@ test("jumps are judged against your best: kit best first, an earlier rep of the 
   assert.equal(l.rep.prior, 19.0);
   const r = combine.feed(jump("R", 19.5));
   assert.equal(r.rep.prior, 21.0, "the right foot is judged against the right foot's best, not the left's");
-  assert.equal(r.rep.judgment.id, "warmup", "1.5 cm under the right-foot best: neutral, never shame");
+  assert.equal(r.rep.judgment.id, "solid", "1.5 cm under the right-foot best: neutral, never shame, and not called a warm-up");
   assert.equal(combine.summary().marks.onefoot, 19.5);
 
   // inside one round the second foot is NOT compared with the first: both are first marks
@@ -200,26 +200,58 @@ test("the rest and the visit cap are enforced by start() on a real body, and ign
   for (let i = 0; i < 5; i++) { assert.equal(s.combine.start().ok, true); s.combine.stop(); }
 });
 
-test("a Combine with nothing finished was no effort: it neither uses up one of the visit's two nor starts a rest", () => {
+test("a Combine is counted when it FINISHES with a station done: a Start that goes nowhere (a reload, a closed tab) burns nothing", () => {
   const r = make({ sim: false });
   r.combine.start();
-  assert.equal(r.visit.combines, 1);
+  assert.equal(r.visit.combines, 0, "starting counts nothing");
+  assert.equal(r.visit.lastEndAt, null);
+  // the page is reloaded mid-round: the next page builds a new machine from the same saved visit and can start again, any number of times
+  for (let i = 0; i < 4; i++) {
+    const again = createCombine({ now: r.now, sim: false, visit: r.visit });
+    assert.equal(again.start().ok, true, `start ${i + 1} after a reload`);
+  }
   r.combine.stop();
-  assert.equal(r.visit.combines, 0, "refunded");
+  assert.equal(r.visit.combines, 0, "a stopped round with nothing finished is no effort");
   assert.equal(r.visit.lastEndAt, null);
   assert.equal(r.combine.start().ok, true, "no rest after a Combine that finished nothing");
   r.visit.warm = true;
   r.combine.feed(jump("BOTH", 30));
+  assert.equal(r.visit.combines, 0, "still running: not counted yet");
   r.combine.stop();
   assert.equal(r.visit.combines, 1, "a Combine with a finished station counts");
   assert.ok(r.visit.lastEndAt != null);
   assert.equal(r.combine.start().reason, "rest");
-  // and the previous rest state is put back when an empty round ends
+  // an empty round later leaves the rest state as it was
   r.tick(C.CAPS.restMs + 1);
   const before = r.visit.lastEndAt;
   r.combine.start(); r.combine.stop();
   assert.equal(r.visit.lastEndAt, before);
   assert.equal(r.visit.combines, 1);
+  assert.equal(r.combine.round.n, 2, "an empty round carries the number of the next Combine to be played");
+});
+
+test("a sprint cut short by the timeout is not the station's result; the same number of steps as asked is", () => {
+  const { combine } = make();
+  combine.start();
+  combine.feed(jump("BOTH", 30)); combine.feed(jump("L", 17)); combine.feed(jump("R", 18));
+  [450, 460, 470].forEach((ms) => combine.feed(step(ms)));
+  for (const N of [2, 4]) {
+    const r = combine.feed(sprint(1500, N));
+    assert.equal(r.accepted, false); assert.equal(r.reason, "short-sprint");
+    assert.equal(combine.stationId, "sprint", `a ${N}-step run of a 5-step sprint leaves the station open`);
+  }
+  assert.equal(combine.summary().counts.sprints, 0);
+  assert.equal(combine.summary().marks.sprint, null);
+  assert.equal(combine.feed(sprint(1900, 5)).accepted, true);
+  assert.equal(combine.stationId, "bounce");
+  // and the asked-for count is read live, so 3 steps asked for means 3 is a full sprint
+  let want = 5;
+  const w = make({ sprintN: () => want });
+  w.combine.start();
+  w.combine.feed(jump("BOTH", 30)); w.combine.feed(jump("L", 17)); w.combine.feed(jump("R", 18));
+  [450, 460, 470].forEach((ms) => w.combine.feed(step(ms)));
+  want = 3;
+  assert.equal(w.combine.feed(sprint(1100, 3)).accepted, true);
 });
 
 test("a Combine id is unique per visit and round, so a double tap on Done counts once in the kit", () => {
@@ -239,7 +271,7 @@ test("sprint judgments compare only the same step count; shorter sprints are the
   const r = combine.feed(sprint(1900, 5));
   assert.equal(r.rep.judgment.id, "pb");
   assert.equal(combine.summary().metrics.sprint5, 1.9);
-  const t = make({ best: { sprint: (n) => (n === 5 ? 2.0 : null) } });
+  const t = make({ sprintN: () => 3, best: { sprint: (n) => (n === 5 ? 2.0 : null) } });
   t.combine.start();
   t.combine.feed(jump("BOTH", 30)); t.combine.feed(jump("L", 17)); t.combine.feed(jump("R", 18));
   [450, 460, 470].forEach((ms) => t.combine.feed(step(ms)));

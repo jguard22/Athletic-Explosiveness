@@ -1,6 +1,6 @@
 // Today's booth board: three letters and a two-foot leap, kept on this device only (its own key, outside the kit, outside the CSV).
 // Opt-in per visitor. Simulated results and warm-up jumps never get on it. Nothing here leaves the browser.
-import { CAPS, cleanInitials, ordinal } from "./config.js";
+import { CAPS, cleanInitials, isBlockedInitials, ordinal } from "./config.js";
 import { dayKey } from "../vendor/fun-kit/time.js";
 
 export const BOARD_KEY = "bw-ae-board";
@@ -31,12 +31,13 @@ export function createBoard({ storage, now = Date.now, key = BOARD_KEY } = {}) {
   const today = () => { const d = dayKey(now(), DAY_OPTS); return load().filter((e) => e.day === d).sort((a, b) => b.cm - a.cm || a.at - b.at); };
 
   const api = {
-    /** Add a visitor. Refuses a simulated result, a warm-up result and anything that is not three-letters-and-a-height. */
+    /** Add a visitor. Refuses a simulated result, a warm-up result, letters on the short blocked list and anything that is not letters-and-a-height. */
     add({ who, cm, sim = false, warmup = false } = {}) {
       if (sim) return { ok: false, reason: "sim" };
       if (warmup) return { ok: false, reason: "warmup" };
       const initials = cleanInitials(who);
       if (!initials) return { ok: false, reason: "initials" };
+      if (isBlockedInitials(initials)) return { ok: false, reason: "blocked" };
       if (!(Number.isFinite(cm) && cm > 0)) return { ok: false, reason: "invalid" };
       const at = now(), day = dayKey(at, DAY_OPTS);
       const entry = { id: `b${at.toString(36)}${Math.random().toString(36).slice(2, 6)}`, who: initials, cm, at, day };

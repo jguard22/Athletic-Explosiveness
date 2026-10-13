@@ -13,7 +13,7 @@ import {
 import * as celebrateKit from "../vendor/fun-kit/juice/celebrate.js";
 import {
   APP_ID, SIM_ID, CURVE, TITLES, DAILY_XP_SOFT_CAP, XP, CAPS, roundXp, makePbMetrics, makeBadges, heat, countPbs, improved,
-  truthXp, plausibleTruth,
+  truthXp, plausibleTruth, isPriorVisitCard,
 } from "./config.js";
 import { COPY } from "./copy.js";
 
@@ -46,6 +46,8 @@ export function setMotion(choice) {
 }
 
 const KEYS = { cards: "app.cards", hist: "app.hist", truthDay: "app.truthDay" };
+/** Celebration cues that are about a saved profile (levels, badges, unlocks, goals, comebacks): not shown when no profile is being kept. */
+const PROFILE_CUES = new Set(["levelup", "badge", "unlock", "goal", "milestone", "comeback", "challenge", "drop"]);
 
 const defaultFmt = {
   height: (cm) => `${cm.toFixed(1)} cm`, ms: (ms) => `${Math.round(ms)} ms`, seconds: (s) => `${s.toFixed(2)} s`,
@@ -115,8 +117,14 @@ export function createFun(o = {}) {
   // ---------------------------------------------------------------- the person's own history (kit store, so Forget wipes it)
   const cards = {
     all: () => kit.store.get(KEYS.cards, []),
-    /** The latest Card from an earlier visit: the one flames compare with. */
-    prevVisit: (visitId) => cards.all().filter((c) => c.visit !== visitId).pop() ?? null,
+    /**
+     * The latest Card from an earlier visit: the one flames compare with. It has to be a few hours old or from another day, so a second
+     * tab, "Next visitor" or a back-to-back round never takes the Card from minutes ago as "last visit".
+     */
+    prevVisit: (visitId) => {
+      const t = now(), today = dayKey(t, { rolloverHour: 4 });
+      return cards.all().filter((c) => c.visit !== visitId && isPriorVisitCard(c.at, t, dayKey(c.at, { rolloverHour: 4 }) === today)).pop() ?? null;
+    },
     /** The latest Card from this visit (the round 2 improvement bonus compares with it). */
     inVisit: (visitId) => cards.all().filter((c) => c.visit === visitId).pop() ?? null,
     save: (c) => kit.store.update(KEYS.cards, (l) => [...l, c].slice(-12), []),
@@ -210,6 +218,7 @@ export function createFun(o = {}) {
           if (id === "pb" || id === "lightning" || id === "springy") { s.sound.play("fanfare"); s.celebrate.burst?.({ x: 0.5, y: 0.35, count: 80 }); played.push("pb"); s.haptics.play("pbPulse"); }
           else if (id === "photo") { s.sound.play("shutter"); s.celebrate.gentleGlow?.(); played.push("photo"); }
           else if (id === "first") { s.celebrate.burst?.({ x: 0.5, y: 0.35, count: 24 }); played.push("first"); }
+          else if (id === "firstleap") { s.sound.play("coin"); s.celebrate.burst?.({ x: 0.5, y: 0.35, count: 24 }); played.push("firstleap"); }
           else if (kind === "firststep" || kind === "sprint" || kind === "bounce") { s.sound.play("tick"); played.push("tick"); }
           visual?.();
         } catch (e) { if (!(e instanceof Cancelled)) throw e; }
@@ -223,13 +232,18 @@ export function createFun(o = {}) {
     /** The station start tick. */
     tick() { return gate.run(() => { try { stage().sound.play("tick", { gain: 0.6 }); } catch { /* cancelled or no audio */ } }, { key: "tick", live: true }); },
 
-    /** The end-of-round celebration: cues, sounds, then the level-up dialog, all held by the gate. */
-    async celebrate(outcome) {
+    /**
+     * The end-of-round celebration: cues, sounds, then the level-up dialog, all held by the gate.
+     * `progress: false` (Simulate, and booth mode where nobody has a profile) leaves out everything about a profile that is not being kept:
+     * the level-up dialog and the badge, unlock, goal and milestone toasts. The personal-best cue and the fanfare stay.
+     */
+    async celebrate(outcome, { progress = true } = {}) {
       if (!outcome || outcome.duplicate) return [];
       const staged = stage();
       running++;
       try {
-        return await playOutcome(outcome, {
+        const shown = progress ? outcome : { ...outcome, celebrations: (outcome.celebrations ?? []).filter((c) => !PROFILE_CUES.has(c.type)) };
+        return await playOutcome(shown, {
           sound: staged.sound, haptics: staged.haptics, guardrails: kit.guard, gate, pause, maxToasts: 2, maxBadgeToasts: 2,
           celebrate: staged.celebrate, soundMap: { complete: "fanfare", pb: "coin" }, hapticMap: { pb: "pbPulse", complete: null, levelup: null },
           featureLabel: (id) => id,

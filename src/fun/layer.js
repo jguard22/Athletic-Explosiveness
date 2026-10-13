@@ -34,7 +34,9 @@ const session = {
   set(k, v) { try { sessionStorage.setItem(k, v); } catch { /* memory only */ } },
   del(k) { try { sessionStorage.removeItem(k); } catch { /* none */ } },
 };
-const VISIT_KEY = "bw-ae-visit";
+const VISIT_KEY = "bw-ae-visit";          // the visit is kept on the device (not in a tab), with an idle expiry
+const STAFF_KEY = "bw-ae-staff";          // this tab was opened with ?staff=1: it shows the staff controls on a booth device
+const hasBle = (() => { try { return !!navigator.bluetooth; } catch { return false; } })();   // Web Bluetooth: Chrome and Edge, not iOS Safari or Firefox
 const playFlags = () => { try { return JSON.parse(prefs.get("bw-ae-play", "{}")) || {}; } catch { return {}; } };
 
 // ---------------------------------------------------------------- state
@@ -49,7 +51,7 @@ let mode = root.getAttribute("data-fun");
 let booth = root.hasAttribute("data-booth");
 let real = null, simCtx = null, ctx = null;       // ctx: { fun, sim, visit, combine }
 let view = "idle", run = null, cardHandle = null;  // idle | run | card
-let armTimer = null, goWatch = null, fwTicker = null, restTimer = null;
+let armTimer = null, goWatch = null, fwTicker = null, restTimer = null, stationAt = 0;
 let lastSum = null, lastRes = null, lastJumpCm = null, meId = null, lastFirstWinMs = null;
 const pending = { armedFor: null };
 
@@ -61,21 +63,49 @@ const fmt = {
 const say = (text) => { if (!els.live) return; els.live.textContent = ""; setTimeout(() => { els.live.textContent = text; }, 30); };
 const spoken = (cm) => `${U.fmt("height", cm)} ${U.get() === "imperial" ? COPY.words.inches : COPY.words.centimeters}`;
 
-// ---------------------------------------------------------------- the person's visit (one sitting), kept in this tab only
+// ---------------------------------------------------------------- the person's visit (one sitting), kept on this device
+// Not per tab: a second tab shares the same rest, the same two-Combine cap and the same warm-up count, so opening another tab is not a
+// way around them. Three idle hours end a visit, so a returning athlete is never locked out by an old cap. Opening the page writes nothing:
+// the visit is saved when something real happens (a jump, a finished Combine, a tap on I'm warm / I'm rested).
+function readVisit() { try { const v = JSON.parse(prefs.get(VISIT_KEY)); return v && typeof v.id === "string" ? v : null; } catch { return null; } }
 function loadVisit(sim) {
   if (sim) return C.newVisit();
-  try {
-    const v = JSON.parse(session.get(VISIT_KEY));
-    if (v && typeof v.id === "string") return { ...C.newVisit(), ...v };
-  } catch { /* none yet */ }
-  return C.newVisit();
+  const v = readVisit();
+  return v && !C.visitExpired(v, Date.now()) ? { ...C.newVisit(), ...v } : C.newVisit();
 }
-const saveVisit = (c) => { if (!c.sim) session.set(VISIT_KEY, JSON.stringify(c.visit)); };
+function saveVisit(c) {
+  if (c.sim) return;
+  c.visit.touchedAt = Date.now();
+  prefs.set(VISIT_KEY, JSON.stringify(c.visit));
+}
+/** Take on a newer visit another tab saved, or start a fresh one when this one has gone stale. Never while a round is running. */
+function syncVisit() {
+  if (!real || view === "run") return false;
+  const now = Date.now(), cur = real.visit, stored = readVisit();
+  const live = stored && !C.visitExpired(stored, now) ? stored : null;
+  let next = cur;
+  if (live && (live.id !== cur.id || (live.touchedAt ?? 0) > (cur.touchedAt ?? 0))) next = { ...C.newVisit(), ...live };
+  else if (C.visitExpired(cur, now)) next = C.newVisit();
+  if (next === cur) return false;
+  real.visit = next;
+  return true;
+}
+function refreshVisit() {
+  if (view === "run" || !syncVisit()) return;
+  if (view === "idle") toIdle(); else if (view === "card") watchRest();
+}
+// staff controls on a booth device: opened once with ?staff=1, remembered for this tab only
+let staff = false;
+try {
+  const u = new URL(location.href);
+  if (u.searchParams.get("staff") === "1") { session.set(STAFF_KEY, "1"); u.searchParams.delete("staff"); history.replaceState(null, "", u); }
+  staff = session.get(STAFF_KEY) === "1";
+} catch { /* no URL API: no staff controls on a booth device */ }
 
 // ---------------------------------------------------------------- the two kit instances (real, and the demo twin on memory storage)
 // A kit on a fresh namespace writes its schema marker the moment it is created. So a visitor who has no saved profile gets a "preview"
 // (memory storage: it only draws the empty level strip) and the real kit is created when something real happens: a Combine on a
-// body, a typed ground-truth value. Opening the page, or simulating, leaves nothing in storage.
+// body, a typed ground-truth value. Opening the page, or simulating, never writes the kit's profile (simulating only adds local event counts, flagged sim).
 function hasStoredProfile() { try { return Object.keys(localStorage).some((k) => k.startsWith(`fk:${C.APP_ID}:`)); } catch { return false; } }
 function makeCtx(sim, { preview = false } = {}) {
   const fun = createFun({
@@ -106,8 +136,9 @@ function lastCardInfo() {
 }
 function toIdle() {
   clearRoundTimers();
+  syncVisit();
   view = "idle"; run = null; cardHandle = null;
-  ui.renderIdle(els.stage, { sim: ctx.sim, booth, safety: prefs.get("bw-ae-safety") !== "1", last: ctx.sim ? null : lastCardInfo(), can: can(), act: stageActs });
+  ui.renderIdle(els.stage, { sim: ctx.sim, booth, ble: hasBle, safety: prefs.get("bw-ae-safety") !== "1", last: ctx.sim ? null : lastCardInfo(), can: can(), act: stageActs });
   watchRest();
 }
 const stageActs = {
@@ -131,7 +162,7 @@ function clearRoundTimers() {
 }
 function startCombine() {
   if (mode !== "combine" || view === "run") return;
-  if (!ctx.sim) ensureReal();
+  if (!ctx.sim) { syncVisit(); ensureReal(); }
   ctx.fun.cancel();
   ctx.combine = newCombine();
   const r = ctx.combine.start();
@@ -158,18 +189,23 @@ function enterStation() {
   run.setStation(id, { sprintN: AE.sprintSteps() });
   ctx.fun.tick();
   const sim = ctx.sim;
+  stationAt = Date.now();
   if (ctx.sim) AE.simHold(!["leap", "onefoot", "bounce"].includes(id));
   // the line under the prompt
   if (id === "leap" || id === "onefoot") {
-    if (!sim && !AE.hasDevice()) { run.setStatus(COPY.stage.waitDevice); if (id === "leap") run.setDevicePrompt(true, { connect: () => document.getElementById("btn-insoles").click(), sim: () => document.getElementById("btn-sim").click() }); }
+    if (!sim && !AE.hasDevice()) { run.setStatus(hasBle ? COPY.stage.waitDevice : COPY.stage.noBle); if (id === "leap") run.setDevicePrompt(true, devicePrompt()); }
     else run.setStatus(COPY.stage.standStill);
   } else if (id === "bounce") run.setStatus(COPY.stage.hopsStart);
   else run.setStatus(COPY.stage.getSet);
-  if (id === "leap" && C.isWarmup(ctx.visit, sim)) run.setWarm(true, tapWarm);
+  // the warm-up hint stays on both jump stations for as long as warm-up jumps remain, so "I'm warm" is there for the one-foot jumps too
+  if ((id === "leap" || id === "onefoot") && C.isWarmup(ctx.visit, sim)) run.setWarm(true, tapWarm);
   refreshSub();
   run.setSkipLabel(COPY.stage.skip);
   if (id === "firststep" || id === "sprint") scheduleArm(sim ? 700 : 1600);
 }
+
+/** the two ways forward when there is nothing to measure with: Connect only where the browser can */
+const devicePrompt = () => ({ connect: hasBle ? () => document.getElementById("btn-insoles").click() : null, sim: () => document.getElementById("btn-sim").click() });
 
 function refreshSub() {
   const sum = ctx.combine.summary(); if (!sum || !run) return;
@@ -180,12 +216,15 @@ function refreshSub() {
   else run.setSub([]);
 }
 
-/** The drills arm themselves one beat after the station opens (and again after each trial), unless the person skipped away. */
-function scheduleArm(delay) {
+/**
+ * The drills arm themselves one beat after the station opens (and again after each trial), unless the person skipped away.
+ * `keepStatus`: a line like "Not enough steps. Let's go again." stays on screen until the drill is armed again.
+ */
+function scheduleArm(delay, { keepStatus = false } = {}) {
   clearTimeout(armTimer);
   const id = ctx.combine?.stationId;
   if (id !== "firststep" && id !== "sprint") return;
-  run.setStatus(COPY.stage.getSet);
+  if (!keepStatus) run.setStatus(COPY.stage.getSet);
   armTimer = setTimeout(() => {
     if (!ctx.combine || ctx.combine.stationId !== id || view !== "run") return;
     if (AE.measuring()) { scheduleArm(500); return; }
@@ -206,7 +245,7 @@ function onGo(kind) {
   goWatch = setTimeout(() => {
     if (view !== "run" || !AE.measuring()) return;
     AE.cancelDrills(); run.setGo(false); run.setStation(ctx.combine.stationId, { sprintN: AE.sprintSteps() });
-    run.setStatus(COPY.stage.noResponse); refreshSub(); scheduleArm(1200);
+    run.setStatus(COPY.stage.noResponse); refreshSub(); scheduleArm(1200, { keepStatus: true });
   }, 8000);
 }
 
@@ -220,6 +259,8 @@ function onFeed(d) {
   const r = c.feed(d.type === "rsi" ? { type: "rsi", rsi: d.rsi, hops: d.hops } : d);
   if (!r.accepted) {
     if (r.reason === "wrong-foot") run.setHint(r.hint === "leap" ? COPY.stage.wrongFootLeap : COPY.stage.wrongFootOne);
+    // a sprint cut short by the timeout is not the station's result: say so and go again
+    else if (r.reason === "short-sprint") { run.setGo(false); run.setStatus(COPY.stage.notEnough); scheduleArm(1200, { keepStatus: true }); }
     return;
   }
   ctx.fun.edge();   // an effort just ended: rewards wait 300 ms more
@@ -227,7 +268,9 @@ function onFeed(d) {
   if (r.hop) return;
   const rep = r.rep;
   if (d.type === "firststep" || d.type === "sprint") run.setGo(false);
-  const vm = repView(rep);
+  // the first leap ever is the first win. While it is still a warm-up it is celebrated as a first, not as a best (the Warm-up tag stays)
+  const firstLeap = rep.kind === "leap" && rep.warmup && !ctx.fun.firstWin.isDone();
+  const vm = repView(rep, firstLeap);
   const shown = run.showRep(vm);
   if (rep.kind === "leap" || rep.kind === "onefoot") { lastJumpCm = rep.cm; refreshFun(); barsGhost(ctx.fun.bests.jump()); }
   say(announcement(rep));
@@ -238,7 +281,7 @@ function onFeed(d) {
     if (!before && st.done) onFirstWin(st);
   }
   const pb = rep.judgment.id === "pb" && !rep.warmup;
-  ctx.fun.rep({ kind: rep.kind, judgment: rep.warmup ? C.JUDGMENTS.warmup : rep.judgment, cm: rep.cm, visual: pb ? shown.markPb : undefined });
+  ctx.fun.rep({ kind: rep.kind, judgment: rep.warmup ? (firstLeap ? C.JUDGMENTS.firstleap : C.JUDGMENTS.warmup) : rep.judgment, cm: rep.cm, visual: pb ? shown.markPb : undefined });
   if (rep.kind === "bounce" && !r.stationDone) run.setStatus(COPY.stage.hops(rep.hops));
   if (r.stationDone) {
     ctx.fun.stamp(); stats.record("station_done");
@@ -261,9 +304,9 @@ function barsGhost(best) {
   bars.dataset.ghost = "on"; bars.dataset.ghostLabel = COPY.near.best;
 }
 
-function repView(rep) {
+function repView(rep, firstLeap = false) {
   switch (rep.kind) {
-    case "leap": return { kind: "leap", label: COPY.stations.leap.name, value: rep.cm, valueKind: "height", judgment: rep.judgment, ghost: rep.prior, better: "higher", warmup: rep.warmup };
+    case "leap": return { kind: "leap", label: COPY.stations.leap.name, value: rep.cm, valueKind: "height", judgment: firstLeap ? C.JUDGMENTS.firstleap : rep.judgment, ghost: rep.prior, better: "higher", warmup: rep.warmup };
     case "onefoot": return { kind: "onefoot", label: rep.side === "L" ? COPY.words.leftFoot : COPY.words.rightFoot, value: rep.cm, valueKind: "height", judgment: rep.judgment, ghost: rep.prior, better: "higher", warmup: rep.warmup };
     case "firststep": return { kind: "firststep", label: `${COPY.stations.firststep.name} ${COPY.words.ofTotal(rep.n, rep.need)}`, value: rep.stepMs, valueKind: "ms", judgment: rep.judgment, ghost: ctx.fun.bests.firstStep(), better: "lower" };
     case "sprint": return { kind: "sprint", label: `${COPY.stations.sprint.name}, ${COPY.words.steps(rep.n)}`, value: rep.s, valueKind: "s", judgment: rep.judgment, ghost: rep.prior, better: "lower" };
@@ -287,6 +330,7 @@ function tapWarm() {
 }
 function skipStation() {
   if (view !== "run") return;
+  if (Date.now() - stationAt < C.CAPS.skipGuardMs) return;   // a double tap on Skip skips one station, not two
   clearTimeout(armTimer); clearTimeout(goWatch);
   AE.cancelDrills(); run.setGo(false);
   const r = ctx.combine.skip();
@@ -313,7 +357,7 @@ function startFirstWinTicker() {
     if (view !== "run" || ctx.combine.stationId !== "leap") return;
     const f = ctx.fun.firstWin.tick();
     if (f?.type === "nudge") run.setHint(COPY.stage.nudge);
-    if (f?.type === "assist" && !ctx.sim) run.setDevicePrompt(true, { connect: () => document.getElementById("btn-insoles").click(), sim: () => document.getElementById("btn-sim").click() });
+    if (f?.type === "assist" && !ctx.sim) run.setDevicePrompt(true, devicePrompt());
   }, 1000);
 }
 
@@ -330,18 +374,18 @@ function finishRound({ silent = false } = {}) {
   view = "card";
   const level = res.outcome.xp;
   const canBoard = !ctx.sim && sum.marks.leap != null;
-  const boardNote = ctx.sim ? COPY.board.simBlocked : sum.warmupOnly ? COPY.board.warmBlocked : "";
   const pulseDue = !ctx.visit.pulsed;
   cardHandle = ui.renderCard(els.stage, {
     sum, heat: res.heat, story: storyPicks(sum), xp: res.outcome.xp, level: { level: level.level, title: level.title },
-    sim: ctx.sim, canBoard, boardNote, pulseDue, prevVisit: !!res.prev, act: stageActs,
+    sim: ctx.sim, booth: booth && !ctx.sim, canBoard, pulseDue, prevVisit: !!res.prev, act: stageActs,
   });
   cardHandle.el.scrollIntoView?.({ block: "start", behavior: document.documentElement.dataset.motion === "reduce" ? "auto" : "smooth" });
   cardHandle.focus();
   watchRest();
   renderLevel();
   say(COPY.stage.live.card);
-  if (!silent) ctx.fun.celebrate(res.outcome);
+  // Simulate and booth mode keep no profile, so nothing about levels and badges is celebrated there
+  if (!silent) ctx.fun.celebrate(res.outcome, { progress: !(ctx.sim || booth) });
 }
 
 // ---------------------------------------------------------------- the rest before a rematch
@@ -349,14 +393,20 @@ function restTimerStop() { clearInterval(restTimer); restTimer = null; }
 function watchRest() {
   restTimerStop();
   const tick = () => {
-    const left = C.restLeftMs(ctx.visit, Date.now(), ctx.sim);
-    const capped = !ctx.sim && ctx.visit.combines >= C.CAPS.combinesPerVisit;
-    if (cardHandle) cardHandle.setRest(left, { cap: capped });
-    else if (view === "idle") { const line = document.getElementById("ae-rest-line"); if (line && left > 0) line.textContent = `${COPY.card.restLine} ${COPY.card.rematchIn(ui.mmss(left))}`; else if (line && left <= 0 && !capped) toIdle(); }
+    // one source for what the screen says: canStart. The cap outranks the rest, so a capped visit never counts down to a rematch
+    const can = C.canStart(ctx.visit, Date.now(), ctx.sim);
+    const left = can.reason === "rest" ? can.waitMs : 0;
+    if (cardHandle) cardHandle.setRest(left, { cap: can.reason === "cap" });
+    else if (view === "idle") {
+      const line = document.getElementById("ae-rest-line");
+      if (can.reason === "rest" && line) line.textContent = `${COPY.card.restLine} ${COPY.card.rematchIn(ui.mmss(left))}`;
+      else if (can.reason === "cap" && line) line.textContent = COPY.card.cap;
+      else if (can.ok && line) toIdle();
+    }
     if (left <= 0) restTimerStop();
   };
   tick();
-  if (C.restLeftMs(ctx.visit, Date.now(), ctx.sim) > 0) restTimer = setInterval(tick, 1000);
+  if (C.canStart(ctx.visit, Date.now(), ctx.sim).reason === "rest") restTimer = setInterval(tick, 1000);
 }
 function tapRested() {
   ctx.visit.rested = true; ctx.visit.restedTaps++; saveVisit(ctx); stats.record("rested_tap");
@@ -384,7 +434,7 @@ function addToBoard(raw) {
   if (!lastSum || view !== "card") return;
   const r = board.add({ who: raw, cm: lastSum.marks.leap, sim: ctx.sim, warmup: lastSum.leap?.warmup });
   if (!r.ok) {
-    cardHandle?.boardResult(r.reason === "initials" ? COPY.board.initials : r.reason === "sim" ? COPY.board.simBlocked : COPY.board.warmBlocked);
+    cardHandle?.boardResult(r.reason === "initials" ? COPY.board.initials : r.reason === "blocked" ? COPY.board.blocked : r.reason === "sim" ? COPY.board.simBlocked : COPY.board.warmBlocked);
     return;
   }
   meId = r.entry.id;
@@ -407,7 +457,7 @@ function renderSettings() {
   const play = playFlags();
   ui.renderSettings(els.settings, {
     sound: prefs.get("bw-ae-sound", "on") !== "off", motion: prefs.get("bw-ae-motion", "auto"), theme: prefs.get("bw-ae-theme", "auto"),
-    booth, moon: !!play.moon, jupiter: !!play.jupiter,
+    booth, staff: !booth || staff, moon: !!play.moon, jupiter: !!play.jupiter,
     act: {
       sound: (on) => { prefs.set("bw-ae-sound", on ? "on" : "off"); for (const c of [real, simCtx]) c?.fun.syncOutputs({ sound: on }); renderSettings(); },
       motion: (id) => { prefs.set("bw-ae-motion", id); window.dispatchEvent(new Event("bwprefs")); setMotion(id); renderSettings(); },
@@ -445,7 +495,7 @@ function downloadStats() {
 function forgetAll() {
   if (view === "run") stopCombine({ silent: true });
   real.fun.forget();        // kit.reset(): every key of fk:ae-demo:* is removed
-  board.clear(); stats.clear(); prefs.del("bw-ae-safety"); session.del(VISIT_KEY);
+  board.clear(); stats.clear(); prefs.del("bw-ae-safety"); prefs.del(VISIT_KEY);
   meId = null; lastSum = null; lastRes = null; lastFirstWinMs = null;
   real.visit = C.newVisit();
   if (!ctx.sim) ctx = real;
@@ -505,11 +555,32 @@ window.addEventListener("bwfun", (e) => {
     case "cal.done": if (view === "run" && !ctx.sim && ctx.combine.stationId === "leap") run.setStatus(COPY.stage.standStill, { wait: false }); break;
     case "go": onGo(d.kind); break;
     case "jump": case "firststep": case "sprint": case "rsi": onFeed(d); break;
-    case "sprint.fail": if (view === "run" && ctx.combine.stationId === "sprint") { clearTimeout(goWatch); run.setGo(false); run.setStatus(COPY.stage.notEnough); scheduleArm(1200); } break;
-    case "truth": if (!ctx.sim) ensureReal(); ctx.fun.truth({ kind: d.kind, n: d.n, device: d.device, visitId: ctx.visit.id }); break;
+    case "sprint.fail": if (view === "run" && ctx.combine.stationId === "sprint") { clearTimeout(goWatch); run.setGo(false); run.setStatus(COPY.stage.notEnough); scheduleArm(1200, { keepStatus: true }); } break;
+    case "truth": {
+      if (!ctx.sim) ensureReal();
+      truthFeedback(d, ctx.fun.truth({ kind: d.kind, n: d.n, device: d.device, visitId: ctx.visit.id }));
+      renderLevel();
+      break;
+    }
     default: break;
   }
 });
+
+/** A typed device height or gate time answers back right where it was typed: what it paid, or why not. Plain text, never a reward effect. */
+function truthFeedback(d, r) {
+  const input = document.querySelector(d.kind === "jump" ? `#jump-table input[data-rep="${d.n}"]` : `#sp-table input[data-sprint="${d.n}"]`);
+  const cell = input?.closest("td");
+  const T = COPY.truth;
+  const text = d.device == null ? (r.revoked ? T.clearedXp : T.cleared)
+    : r.ok ? (r.gained > 0 ? T.paid(r.gained) : T.same)
+    : r.reason === "day-cap" ? T.dayCap : T.implausible;
+  if (cell) {
+    let note = cell.querySelector(".ae-truth-note");
+    if (!note) { note = document.createElement("span"); note.className = "ae-truth-note"; note.setAttribute("role", "status"); cell.append(note); }
+    note.textContent = text;
+  }
+  say(text);
+}
 
 // Combine keeps the header short: the tools (wrist, calibrate, export) live under "Lab details" there, and go back to the header in Lab
 // mode. The same elements move, so the page's own listeners keep working and there are no duplicates.
@@ -523,7 +594,26 @@ function placeTools() {
 }
 
 // header: Combine / Lab switch; nav; lab disclosure; easter eggs
-document.querySelectorAll("#mode-seg button").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));
+/** The header switch leaves the Combine page. Mid-round that would end the round (and use up one of the visit's two), so it asks first. */
+let leaveTimer = null;
+function requestMode(next) {
+  if (next === mode) return;
+  if (view === "run" && mode === "combine" && !leaveTimer) {
+    run.setHint(COPY.stage.leaveAsk); say(COPY.stage.leaveAsk);
+    leaveTimer = setTimeout(() => { leaveTimer = null; if (view === "run") run.setHint(""); }, 5000);
+    return;
+  }
+  clearTimeout(leaveTimer); leaveTimer = null;
+  setMode(next);
+}
+document.querySelectorAll("#mode-seg button").forEach((b) => b.addEventListener("click", () => requestMode(b.dataset.mode)));
+// Space and S are the lab's hotkeys for arming a drill. The Combine arms its own drills, so a stray key must not arm one behind it:
+// off during a round, and off in Combine mode while the lab dashboard is hidden. Lab mode, and Lab details when open between rounds, keep them.
+window.addEventListener("keydown", (e) => {
+  if (mode !== "combine" || (e.code !== "Space" && e.code !== "KeyS") || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.target.closest?.("input, select, textarea, [contenteditable]")) return;
+  if (view === "run" || !root.classList.contains("ae-lab-open")) e.stopImmediatePropagation();
+}, true);
 els.labToggle?.addEventListener("click", () => { root.classList.toggle("ae-lab-open"); syncLabToggle(); });
 document.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey || mode !== "combine") return;
@@ -539,7 +629,8 @@ function refreshFun() {
   const f = playFlags();
   run.setFun(f.moon ? COPY.fun.moon(C.bigHeightText(C.moonCm(lastJumpCm), U.get())) : f.jupiter ? COPY.fun.jupiter(C.bigHeightText(C.jupiterCm(lastJumpCm), U.get())) : "");
 }
-U.onChange(() => { refreshFun(); });
+// the spoken line of the last result named a length in the old system: clear it rather than leave it stale
+U.onChange(() => { refreshFun(); if (els.live) els.live.textContent = ""; });
 
 // cards that only mean something once their data arrives
 for (const card of document.querySelectorAll("#lab-grid .card[data-needs]")) {
@@ -559,6 +650,10 @@ ui.syncMode(mode);
 placeTools();
 syncLabToggle();
 toIdle(); renderBoard(); renderLevel(); renderSettings();
+// another tab may have moved the visit on (a Combine finished there), and a visit goes stale while the page just sits open
+window.addEventListener("storage", (e) => { if (e.key === VISIT_KEY || e.key === null) refreshVisit(); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshVisit(); });
+setInterval(refreshVisit, 30000);
 
 // a small read-only window for the smoke test and the screenshots; it can read state, never change a measurement
 window.BWFun = Object.freeze({

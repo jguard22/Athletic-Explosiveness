@@ -109,6 +109,49 @@ test("Heat compares with the PREVIOUS VISIT's Card only", () => {
   assert.equal(r3.heat.flames, r2.heat.flames);
 });
 
+test("'last visit' is a Card hours old or from another day: a Card from minutes ago (another tab, Next visitor) never counts", () => {
+  const s = setup({});
+  const r1 = s.fun.finishRound({ ...playFull(s.combine({ sim: true }), 30), id: "a:1" }, { visitId: "a" });
+  assert.equal(r1.prev, null);
+  s.tick(5 * 60000);   // a new visit five minutes later: a second tab, or Next visitor
+  const r2 = s.fun.finishRound({ ...playFull(s.combine({ sim: true }), 41), id: "b:1" }, { visitId: "b" });
+  assert.equal(r2.prev, null, "a Card from five minutes ago is not last visit");
+  assert.equal(r2.pbs, 0); assert.equal(r2.heat.flames, 3, "back-to-back rounds cannot climb to four or five flames");
+  s.tick(4 * 3600000);
+  const r3 = s.fun.finishRound({ ...playFull(s.combine({ sim: true }), 44), id: "c:1" }, { visitId: "c" });
+  assert.equal(r3.prev.visit, "b", "four hours on, the latest earlier Card is last visit");
+  assert.ok(r3.pbs >= 1);
+  s.tick(24 * 3600000);
+  const day = s.fun.cards.prevVisit("d");
+  assert.equal(day.visit, "c", "and a Card from another day counts, however it was made");
+});
+
+test("with no profile being kept (Simulate, booth mode) the celebration leaves out the level-up dialog and the badge toasts", async () => {
+  const kept = setup({ sim: true });
+  const res = kept.fun.finishRound(playFull(kept.combine()), { visitId: "v1" });
+  await kept.fun.celebrate(res.outcome);
+  assert.ok(kept.fx.calls.includes("levelUpModal"), "a kept profile gets its level-up dialog");
+  assert.ok(kept.fx.calls.includes("unlockToast"));
+
+  const demo = setup({ sim: true });
+  const res2 = demo.fun.finishRound(playFull(demo.combine()), { visitId: "v1" });
+  assert.ok(res2.outcome.celebrations.some((c) => c.type === "levelup"), "the kit still computes it");
+  await demo.fun.celebrate(res2.outcome, { progress: false });
+  assert.ok(!demo.fx.calls.includes("levelUpModal"), "no 'you reached level 3' for a simulated athlete");
+  assert.ok(!demo.fx.calls.includes("unlockToast"), "no badge toasts for a profile that is not kept");
+});
+
+test("the first leap of a visit, still a warm-up, gets the first-win burst and a coin; an ordinary warm-up gets neither", async () => {
+  const s = setup({ sim: true });
+  const first = await s.fun.rep({ kind: "leap", judgment: C.JUDGMENTS.firstleap, cm: 30 }).done;
+  assert.ok(first.result.includes("firstleap"));
+  assert.ok(s.fx.calls.includes("burst"), "a burst of particles");
+  s.fx.calls.length = 0;
+  const plain = await s.fun.rep({ kind: "leap", judgment: C.JUDGMENTS.warmup, cm: 30 }).done;
+  assert.deepEqual(plain.result, ["whoosh"], "the jump's own whoosh and nothing else");
+  assert.deepEqual(s.fx.calls, [], "a plain warm-up shows no particles");
+});
+
 test("a stopped Combine with no finished station records nothing", () => {
   const s = setup({ sim: true });
   const c = s.combine(); c.start();

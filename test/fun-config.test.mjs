@@ -6,14 +6,16 @@ import { xpToReach, xpForNextLevel, levelFromXp, titleFor, createGuardrails, cre
 import * as C from "../src/fun/config.js";
 import { COPY, allStrings } from "../src/fun/copy.js";
 
-test("jump judgments: PB! beats the best, Photo finish is within 1 cm, Close within 5 percent, Warm-up otherwise", () => {
+test("jump judgments: PB! beats the best, Photo finish is within 1 cm, Close within 5 percent, Solid within 15, Warm-up only below 85 percent", () => {
   assert.equal(C.judgeJump(35, 33.1).id, "pb");
   assert.equal(C.judgeJump(33.2, 33.1).id, "pb");
   assert.equal(C.judgeJump(33.1, 33.1).id, "photo");          // level with the best is a photo finish, not a PB
   assert.equal(C.judgeJump(32.1, 33.1).id, "photo");          // exactly 1 cm off
   assert.equal(C.judgeJump(32.09, 33.1).id, "close");         // just over 1 cm but within 5 percent (1.655 cm)
   assert.equal(C.judgeJump(31.5, 33.1).id, "close");          // 4.8 percent off
-  assert.equal(C.judgeJump(31.4, 33.1).id, "warmup");         // 5.1 percent off
+  assert.equal(C.judgeJump(31.4, 33.1).id, "solid");          // 5.1 percent off: not a warm-up, the word is reserved for far below
+  assert.equal(C.judgeJump(28.2, 33.1).id, "solid");          // 14.8 percent off
+  assert.equal(C.judgeJump(28.1, 33.1).id, "warmup");         // 15.1 percent off: below 85 percent of the best
   assert.equal(C.judgeJump(20, 33.1).id, "warmup");           // far below: neutral, never shame
   assert.equal(C.judgeJump(14.2, 15).id, "photo");            // small best: 1 cm window is wider than 5 percent
   assert.equal(C.judgeJump(30, null).id, "first");
@@ -40,7 +42,8 @@ test("sprint and bounce judgments", () => {
   assert.equal(C.judgeSprint(1.9, 2.0).id, "pb");
   assert.equal(C.judgeSprint(2.03, 2.0).id, "photo");
   assert.equal(C.judgeSprint(2.08, 2.0).id, "close");
-  assert.equal(C.judgeSprint(2.2, 2.0).id, "warmup");
+  assert.equal(C.judgeSprint(2.2, 2.0).id, "solid", "10 percent slower than your best is solid, not a warm-up");
+  assert.equal(C.judgeSprint(2.31, 2.0).id, "warmup");
   assert.equal(C.judgeSprint(2.2, null).id, "first");
   assert.equal(C.judgeBounce(0.7, 0.6).id, "springy");
   assert.equal(C.judgeBounce(0.55, 0.6).id, "steady");
@@ -52,9 +55,10 @@ test("every judgment has a word AND a shape, so no cue depends on colour", () =>
     assert.ok(j.word && j.word.length > 1, j.id);
     assert.ok(Object.values(C.SHAPES).includes(j.shape), j.id);
   }
-  // the four jump judgments use four different shapes
-  const shapes = ["pb", "photo", "close", "warmup"].map((id) => C.JUDGMENTS[id].shape);
-  assert.equal(new Set(shapes).size, 4);
+  // the five jump judgments use five different shapes
+  const shapes = ["pb", "photo", "close", "solid", "warmup"].map((id) => C.JUDGMENTS[id].shape);
+  assert.equal(new Set(shapes).size, 5);
+  assert.equal(C.JUDGMENTS.firstleap.word, "First leap");
 });
 
 test("Heat: flames follow the circuit and marks against the PREVIOUS VISIT, never talent", () => {
@@ -144,6 +148,23 @@ test("the visit: three warm-up jumps, a two-minute rest, two Combines per visit;
   assert.equal(C.restLeftMs(v, t0 + 1, true), 0);
 });
 
+test("a visit is a sitting kept on the device with an idle expiry; a Card is a PREVIOUS visit's only once it is hours old or from another day", () => {
+  const t0 = Date.UTC(2026, 9, 13, 15);
+  const v = C.newVisit(t0, "v1");
+  assert.equal(C.visitExpired(v, t0), false);
+  assert.equal(C.visitExpired(v, t0 + C.CAPS.visitGapMs), false, "exactly the gap is still the same sitting");
+  assert.equal(C.visitExpired(v, t0 + C.CAPS.visitGapMs + 1), true);
+  v.combines = 2; v.touchedAt = t0 + 3600000;
+  assert.equal(C.visitExpired(v, t0 + 3600000 + C.CAPS.visitGapMs), false, "activity moves the expiry on");
+  assert.equal(C.canStart(v, t0 + 26 * 3600000).reason, "cap", "a capped visit stays capped while it is the same sitting...");
+  assert.equal(C.visitExpired(v, t0 + 26 * 3600000), true, "...and 26 hours later it is a new sitting, so the athlete is not locked out");
+  assert.equal(C.visitExpired(null, t0), true);
+  assert.ok(C.CAPS.visitGapMs >= 2 * 3600000, "a few hours at least");
+  assert.equal(C.isPriorVisitCard(t0, t0 + 60000, true), false, "a Card from a minute ago is not 'last visit'");
+  assert.equal(C.isPriorVisitCard(t0, t0 + C.CAPS.visitGapMs, true), true);
+  assert.equal(C.isPriorVisitCard(t0, t0 + 60000, false), true, "a Card from another day counts");
+});
+
 test("ground truth: flat XP inside physical plausibility, capped per day, agreement never looked at", () => {
   assert.equal(C.plausibleJumpCm(5), true);
   assert.equal(C.plausibleJumpCm(120), true);
@@ -178,6 +199,9 @@ test("board helpers", () => {
   assert.equal(C.cleanInitials("a-b c"), "ABC");
   assert.equal(C.cleanInitials("12"), "");
   assert.equal(C.cleanInitials(null), "");
+  assert.equal(C.isBlockedInitials("fuk"), true);
+  assert.equal(C.isBlockedInitials("JEF"), false);
+  assert.ok(C.BLOCKED_INITIALS.every((x) => /^[A-Z]{3}$/.test(x)));
 });
 
 test("personal-best metrics honour the display system through the format function", () => {

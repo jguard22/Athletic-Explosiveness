@@ -17,6 +17,7 @@ test("board: opt-in initials and a two-foot leap; simulated and warm-up results 
   assert.deepEqual(board.add({ who: "abc", cm: 40, sim: true }), { ok: false, reason: "sim" });
   assert.deepEqual(board.add({ who: "abc", cm: 40, warmup: true }), { ok: false, reason: "warmup" });
   assert.deepEqual(board.add({ who: "12", cm: 40 }), { ok: false, reason: "initials" });
+  assert.deepEqual(board.add({ who: "fuk", cm: 40 }), { ok: false, reason: "blocked" }, "a short list of letters that do not belong on a shared screen");
   assert.deepEqual(board.add({ who: "abc", cm: 0 }), { ok: false, reason: "invalid" });
   assert.deepEqual(board.add({ who: "abc", cm: NaN }), { ok: false, reason: "invalid" });
   assert.equal(board.count(), 0);

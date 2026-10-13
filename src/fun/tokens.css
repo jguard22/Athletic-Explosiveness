@@ -36,11 +36,11 @@ html[data-fun][data-theme="light"] {
   color-scheme: light;
   --navy: #eef2fa; --navy-2: #e2e8f5; --navy-glow: #ffffff; --panel: #ffffff; --panel-2: #eef1f9; --surface-3: #e4e9f6;
   --text: #11163a; --text-2: #394168; --muted: #55608a; --line: #cdd4ea;
-  --teal: #00c9a1; --teal-dim: #00a88a; --teal-text: #00705c; --on-teal: #02241c; --on-teal-dim: #02241c;
+  --teal: #00d4aa; --teal-dim: #00a88a; --teal-text: #00705c; --on-teal: #02241c; --on-teal-dim: #02241c;
   --amber: #e6a512; --amber-text: #7a4f00; --on-amber: #2a1a02; --armed-bg: #fff1d1;
   --red: #d6334b; --red-text: #b3243c; --blue: #2a6fd6; --blue-text: #1f5fbf;
   --track: rgba(20, 40, 90, .14); --overlay: rgba(243, 246, 251, .9);
   --shadow: 0 24px 60px -24px rgba(13, 23, 51, .3); --focus: #11163a;
   --rarity-common: #55608a; --rarity-uncommon: #0b7a2a; --rarity-rare: #1f5fae; --rarity-epic: #7a45d6; --rarity-legendary: #a06a00;
-  --confetti-1: #00c9a1; --confetti-2: #e6a512; --confetti-3: #2a78d6; --confetti-4: #e0683a; --confetti-5: #11163a;
+  --confetti-1: #00d4aa; --confetti-2: #e6a512; --confetti-3: #2a78d6; --confetti-4: #e0683a; --confetti-5: #11163a;
 }

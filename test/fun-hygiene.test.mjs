@@ -130,6 +130,14 @@ test("the static first-paint markup in index.html says what COPY says (one sourc
   assert.ok(html.includes(COPY.mode.combine) && html.includes(COPY.mode.lab));
 });
 
+test("nothing on the page says GO before the real cue, and no two controls share a name but differ in what they do", () => {
+  // a reaction measurement: the word GO is the cue (a filled block and a beep), so no station prompt may show it earlier
+  for (const id of ["firststep", "sprint"]) assert.notEqual(COPY.stations[id].prompt.toUpperCase(), COPY.stage.go.toUpperCase(), `${id} prompt`);
+  // the header switch (Combine / Lab view) and the section links use different words
+  const labels = [COPY.nav.combine, COPY.nav.board, COPY.nav.level, COPY.nav.lab, COPY.nav.settings];
+  assert.ok(!labels.includes(COPY.mode.combine) && !labels.includes(COPY.mode.lab), "nav labels differ from the view switch's");
+});
+
 test("package.json keeps npm test as the dependency-free node runner and adds the smoke and serve scripts", () => {
   const pkg = JSON.parse(read("package.json"));
   assert.equal(pkg.scripts.test, "node --test");

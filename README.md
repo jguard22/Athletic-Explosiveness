@@ -127,11 +127,15 @@ is untouched and is **Lab mode**.
 |---|---|
 | `index.html` | Combine (or the mode you last chose with the header Combine / Lab switch) |
 | `?mode=lab` | the original dashboard, with the switch (not remembered) |
-| `?fun=0` | the original page: it looks and behaves as before, and no layer module and no kit file is fetched |
-| `?booth=1` | booth mode: no profile, each visitor starts fresh, "Next visitor" resets (remembered) |
+| `?fun=0` | the original page: it looks and behaves as before. No layer module and no kit file is fetched; the four small static files `early.js`, `tokens.css`, `fun.css` and `boot.js` are still requested and do nothing |
+| `?booth=1` | booth mode: no profile, each visitor starts fresh, "Next visitor" resets (remembered). A booth visitor sees no XP, level or "come back" line on the Card, and only Sound, Motion and Theme in Settings |
+| `?staff=1` | on a booth device, shows the staff controls in Settings (booth switch, stats CSV, Clear the board, Forget my data) for this tab; the parameter is removed from the address |
 
 No insoles? **Simulate** plays a whole Combine for you: first stamp at about 1.6 s,
-the Card at about 18 s. Nothing simulated is ever saved, ranked or put on the board.
+the Card at about 18 s. Nothing simulated is ever saved, ranked or put on the board,
+and a simulated athlete gets no level-up dialog or badge toasts. In a browser without
+Web Bluetooth (iOS Safari, Firefox) Simulate is the main button, since Start cannot
+connect anything there.
 
 **Files** (`src/fun/`): `early.js` (classic script in `<head>`: mode, theme,
 motion), `boot.js` (loads the layer only when it is on), `layer.js` (controller),
@@ -148,15 +152,29 @@ measurement running, arm a drill, stop a drill, park / replay the Simulate scrip
 It never imports the layer, and a test greps that it never mentions the kit.
 
 **Rules worth knowing** (all app-side and tested, `test/fun-config.test.mjs`):
-- Judgments are relative to you: PB! / Photo finish / Close / Warm-up for jumps and
-  sprints, Lightning / Quick / Ready / Calibrating against your own median for first
-  steps. Each is a shape plus a word, never colour alone.
+- Judgments are relative to you: PB! / Photo finish (1 cm, 0.03 s) / Close (5 percent) /
+  Solid (15 percent) for jumps and sprints, with Warm-up only below 85 percent of your
+  best (and always for a warm-up jump); Lightning / Quick / Ready / Calibrating against
+  your own median for first steps. Each is a shape plus a word, never colour alone. The
+  first leap of a first-ever visit is celebrated as a "First leap" even while it is a
+  warm-up (the Warm-up tag stays and it is still not a best).
 - Heat is 1 to 5 flames: finishing the circuit and beating your *previous visit's*
   Card. A first-time visitor tops out at 3; a same-visit rematch cannot add flames.
 - Maximal efforts get a real rest: a visible two-minute countdown before a
   same-visit rematch ("I'm rested" ends it early), two Combines per visit, and the
-  first three jumps of a visit are warm-ups (no best, no board) until "I'm warm".
+  first three jumps of a visit are warm-ups (no best, no board) until "I'm warm"
+  (offered on both jump stations while warm-ups remain).
   Simulate has no body to rest, so neither rule applies there.
+- A **visit** is one sitting kept on the device (`bw-ae-visit`), not in a tab: a second
+  tab shares the same rest, cap and warm-up count. Three idle hours end it, so a returning
+  athlete is never locked out, and a capped hero has a "Next visitor" button. A Combine
+  counts when it finishes with at least one station done, never when it starts, so a
+  reload or a stray Start burns nothing. The Card flames compare with the *previous visit*,
+  which is a Card at least three hours old or from another day, so a back-to-back round
+  or "Next visitor" never compares with a Card from minutes ago.
+- Only a full-length sprint counts: a run cut short by the timeout (fewer steps than asked)
+  says "Not enough steps" and goes again. During a Combine the lab hotkeys (Space, S) are off;
+  Lab mode keeps them. Leaving for Lab mid-round asks first (tap the switch twice).
 - XP caps: 5 jumps per jump station, 6 first steps, 3 sprints per round; a daily soft
   cap of 120. Ground-truth pairs pay a flat 2 XP inside physical plausibility
   (5 to 120 cm, 0.5 to 4 s), at most 20 XP a day, and agreement with the estimate is
@@ -171,13 +189,20 @@ It never imports the layer, and a test greps that it never mentions the kit.
   repaint when the switch flips; the Card, board, near-miss lines and Moon line too.
 
 **Saved on this device only:** the kit's profile (`fk:ae-demo:*`, created when a
-Combine on a body first finishes, never by Simulate), the board (`bw-ae-board`),
+Combine on a body first finishes, never by Simulate), the visit (`bw-ae-visit`, written
+by a real jump or a finished Combine, never by Simulate or by opening the page), the board
+(`bw-ae-board`, three letters and a leap; a short list of letters is refused),
 local fun stats (`bw-ae-stats`: counts of named events, the one-tap "Loved it /
-Fine / Not for me" and the first-win time, no body or sensor value), and a few
+Fine / Not for me" and the first-win time, flagged sim when simulated, no body or
+sensor value; Simulate does add these counts, and they keep being written after
+Forget while you keep using the page), and a few
 choices (`bw-ae-mode|theme|motion|sound|booth|safety`). **Settings and privacy**
 has Sound, Motion (Auto / Reduced / Full), Theme (Auto / Light / Dark), booth mode,
 the stats CSV, Clear the board, and **Forget my data** (`kit.reset()` plus the
 board and stats; two taps, no browser dialog).
+
+**Ground-truth entries** answer where they are typed ("+2 XP", "Updated. No extra XP.",
+"That number looks off, so no XP.") and refresh the level strip.
 
 **Easter eggs (for fun, never scored):** press `M` for Moon mode, `J` for Jupiter.
 
@@ -201,7 +226,7 @@ cosmetics, seasonal events, kiosk attract mode, device haptics.
   tokens only, nothing flashes, a reduced-motion twin for every animation.
 
 `npm run smoke` (needs Google Chrome and `playwright-core`; about 2.5 minutes) drives
-the page headlessly: `?fun=0` and `?mode=lab`, a Simulate Combine, the Metric /
+the page headlessly: `?fun=0` (exactly the four small static files requested) and `?mode=lab`, a Simulate Combine, the Metric /
 Imperial repaint, a real round fed with the page's own events, the board, the rest
 rule, Forget my data, the motion and theme controls, zero console errors, no
 horizontal scroll at 390 and 414 px, and it saves the shots in

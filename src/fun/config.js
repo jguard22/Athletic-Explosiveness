@@ -32,6 +32,8 @@ export const CAPS = Object.freeze({
   warmupJumps: 3,         // the first jumps of a visit are warm-ups: no best, no board entry
   combinesPerVisit: 2,
   restMs: 120000,         // a visible two-minute rest before a same-visit rematch
+  visitGapMs: 10800000,   // three hours idle ends a visit; an earlier Card counts as the PREVIOUS visit only once it is this old (or from another day)
+  skipGuardMs: 700,       // a station just opened ignores a Skip tap for this long, so a double tap skips one station, not two
   truthPerDay: 20,        // XP from ground-truth pairs per day
   boardMin: 5,            // results needed before a rank is shown
   boardShown: 5,
@@ -71,11 +73,14 @@ export const JUDGMENTS = Object.freeze({
   photo: J("photo", SHAPES.circle, "accent"), close: J("close", SHAPES.triangle, "accent"), warmup: J("warmup", SHAPES.dash, "calm"),
   lightning: J("lightning", SHAPES.diamond, "gold"), quick: J("quick", SHAPES.circle, "accent"), ready: J("ready", SHAPES.triangle, "accent"),
   calibrating: J("calibrating", SHAPES.ring, "calm"), springy: J("springy", SHAPES.diamond, "gold"), steady: J("steady", SHAPES.circle, "accent"),
+  solid: J("solid", SHAPES.ring, "calm"),
+  // the first leap of a visit while it is still a warm-up: celebrated as a first, though it is not a best (the Warm-up tag stays beside it)
+  firstleap: J("firstleap", SHAPES.diamond, "accent"),
 });
 
 /**
- * A jump: PB! beats your best, Photo finish is within 1 cm, Close within 5 percent, Warm-up otherwise (and always for a warm-up jump).
- * `best` is the best before this result (cm), or null for a first mark.
+ * A jump: PB! beats your best, Photo finish is within 1 cm, Close within 5 percent, Solid within 15 percent, Warm-up only below 85 percent
+ * of your best (and always for a warm-up jump). `best` is the best before this result (cm), or null for a first mark.
  */
 export function judgeJump(cm, best, { warmup = false } = {}) {
   if (warmup) return JUDGMENTS.warmup;
@@ -84,6 +89,7 @@ export function judgeJump(cm, best, { warmup = false } = {}) {
   const gap = best - cm;
   if (gap <= 1) return JUDGMENTS.photo;
   if (gap <= best * 0.05) return JUDGMENTS.close;
+  if (gap <= best * 0.15) return JUDGMENTS.solid;
   return JUDGMENTS.warmup;
 }
 
@@ -107,13 +113,14 @@ export function judgeFirstStep(ms, earlier = []) {
   return JUDGMENTS.warmup;
 }
 
-/** A sprint time to step N (seconds, lower is faster) against your best for the same N. Photo finish is within 0.03 s. */
+/** A sprint time to step N (seconds, lower is faster) against your best for the same N. Photo finish is within 0.03 s, Close 5 percent, Solid 15. */
 export function judgeSprint(s, best) {
   if (best == null) return JUDGMENTS.first;
   if (s < best) return JUDGMENTS.pb;
   const gap = s - best;
   if (gap <= 0.03) return JUDGMENTS.photo;
   if (gap <= best * 0.05) return JUDGMENTS.close;
+  if (gap <= best * 0.15) return JUDGMENTS.solid;
   return JUDGMENTS.warmup;
 }
 
@@ -163,8 +170,16 @@ export const improved = (now, earlier) => countPbs(now, earlier) > 0;
 
 // ---------------------------------------------------------------- the visit (one person's sitting) and the rest rule
 export function newVisit(now = Date.now(), id = `v${now.toString(36)}`) {
-  return { id, startedAt: now, warm: false, jumps: 0, combines: 0, lastEndAt: null, rested: false, restedTaps: 0 };
+  return { id, startedAt: now, touchedAt: now, warm: false, jumps: 0, combines: 0, lastEndAt: null, rested: false, restedTaps: 0 };
 }
+/**
+ * A visit is one sitting, kept on the device (not in a tab) with an idle expiry: three hours without activity and the next person to
+ * touch the page starts a fresh visit, so a returning athlete is never locked out by an old cap, and a second tab shares the same
+ * rest and the same two-Combine cap instead of starting over.
+ */
+export const visitExpired = (visit, now) => !visit || now - (visit.touchedAt ?? visit.startedAt ?? 0) > CAPS.visitGapMs;
+/** A Card counts as the PREVIOUS visit's only once it is a few hours old or from another day, so a back-to-back round never compares with itself. */
+export const isPriorVisitCard = (cardAt, now, sameDay) => now - cardAt >= CAPS.visitGapMs || !sameDay;
 export const isWarmup = (visit, sim = false) => !sim && !visit.warm && visit.jumps < CAPS.warmupJumps;
 /** A Combine on a body needs a rest and is capped per visit. Simulate has no body to rest, so neither rule applies there. */
 export function restLeftMs(visit, now, sim = false) {
@@ -188,6 +203,9 @@ export function ordinal(n) {
 export function cleanInitials(raw) {
   return String(raw ?? "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3);
 }
+/** A short list of three-letter strings that would not belong on a shared screen; the board asks for other letters. */
+export const BLOCKED_INITIALS = Object.freeze(["ASS", "CNT", "COK", "CUM", "DIK", "FAG", "FUC", "FUK", "KKK", "NIG", "NZI", "SEX", "SHT", "TIT", "WTF"]);
+export const isBlockedInitials = (initials) => BLOCKED_INITIALS.includes(String(initials ?? "").toUpperCase());
 
 // ---------------------------------------------------------------- Moon and Jupiter (a game, not a measurement)
 export const MOON_G = 1.62, JUPITER_G = 24.79;

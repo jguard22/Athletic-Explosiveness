@@ -4,7 +4,7 @@
 
 export const COPY = {
   mode: { combine: "Combine", lab: "Lab", aria: "View" },
-  nav: { aria: "Sections", combine: "Combine", board: "Board", level: "Level", lab: "Lab", settings: "Settings" },
+  nav: { aria: "Sections", combine: "Your Combine", board: "Board", level: "Level", lab: "Lab details", settings: "Settings" },
   hero: {
     eyebrow: "Combine",
     title: "Two minutes. Five stations. How explosive are you?",
@@ -13,6 +13,7 @@ export const COPY = {
     sim: "Simulate (no insoles)",
     simHint: "No insoles on? Simulate plays a whole Combine for you.",
     simOn: "Simulating: nothing here is saved or ranked.",
+    noBle: "This browser cannot connect insoles. Simulate plays a whole Combine right here, or open this page in Chrome or Edge.",
   },
   safety: { line: "Clear space, dry floor, land softly. Stop if anything hurts.", ok: "Got it", label: "Safety" },
   stage: {
@@ -28,6 +29,8 @@ export const COPY = {
     stampSkipped: "Skipped",
     stampNotRun: "Not run",
     waitDevice: "Waiting for insoles. Connect them, or try Simulate.",
+    noBle: "This browser cannot connect insoles. Try Simulate, or open this page in Chrome or Edge.",
+    leaveAsk: "A Combine is running. Tap the view switch again to stop it and leave.",
     connect: "Connect insoles",
     simulate: "Simulate",
     noResponse: "No step seen. Let's go again.",
@@ -60,12 +63,12 @@ export const COPY = {
   stations: {
     leap: { name: "Two-foot leap", short: "Leap", prompt: "JUMP", how: "Jump as high as you can. Both feet." },
     onefoot: { name: "One foot at a time", short: "One foot", prompt: "ONE FOOT", how: "Left foot, then right foot. One jump each." },
-    firststep: { name: "First step", short: "First step", prompt: "GO", how: "When the light says GO, step fast in any direction. Three times." },
-    sprint: { name: "Sprint", short: "Sprint", prompt: "SPRINT", how: (n) => `Sprint ${n} steps when the beep sounds.` },
+    firststep: { name: "First step", short: "First step", prompt: "HOLD", how: "When the light says GO, step fast in any direction. Three times." },
+    sprint: { name: "Sprint", short: "Sprint", prompt: "HOLD", how: (n) => `Sprint ${n} steps when the beep sounds.` },
     bounce: { name: "Bounce", short: "Bounce", prompt: "BOUNCE", how: "Three quick hops in a row, short and springy. Skip it if you are tired." },
   },
   judge: {
-    pb: "PB!", photo: "Photo finish", close: "Close", warmup: "Warm-up", first: "First mark",
+    pb: "PB!", photo: "Photo finish", close: "Close", solid: "Solid", warmup: "Warm-up", first: "First mark", firstleap: "First leap",
     lightning: "Lightning", quick: "Quick", ready: "Ready", calibrating: "Calibrating",
     springy: "Springy", steady: "Steady",
   },
@@ -88,6 +91,7 @@ export const COPY = {
     chase: (name) => `Chase: ${name}.`,
     chaseFoot: (side) => `${side} foot`,
     first: "That is your first Card. Come back and beat it.",
+    boothNote: "Nice work. Hand the mat to the next visitor.",
     noStations: "No station finished, so there is no Card yet.",
     rematch: "Rematch",
     rematchIn: (s) => `Rematch in ${s}`,
@@ -98,9 +102,9 @@ export const COPY = {
     nextVisitor: "Next visitor",
     xp: (n) => `+${n} XP`,
     level: (n, title) => `Level ${n}, ${title}`,
-    simNote: "Simulated Card: not saved, not ranked.",
+    simNote: "Simulated Card: not saved, not ranked, never on the board.",
     simTag: "Simulated",
-    warmNote: "Warm-up marks stay off the board and out of the bests. Rematch to set one.",
+    warmNote: "Warm-up jumps stay off the board and out of your bests. Rematch to set a mark.",
     prevNote: "Flames compare with your last visit.",
     rematchNote: "A rematch shows your ghost. Flames still compare with your last visit.",
   },
@@ -117,6 +121,7 @@ export const COPY = {
     needFive: "A rank shows once five people are on the board.",
     simBlocked: "Simulated results never reach the board.",
     warmBlocked: "Your jumps were warm-ups. Rematch to set a mark for the board.",
+    blocked: "Try different letters.",
     rowAria: (nth, who) => `${nth}, ${who}`,
   },
   level: {
@@ -127,6 +132,14 @@ export const COPY = {
     boothHidden: "Booth mode keeps no profile.",
   },
   lab: { label: "Lab details", open: "Open lab details", close: "Hide lab details", sub: "The original dashboard: tables, ground-truth boxes and sensor speeds." },
+  truth: {
+    paid: (n) => `+${n} XP`,
+    same: "Updated. No extra XP.",
+    cleared: "Cleared.",
+    clearedXp: "Cleared. That XP was taken back.",
+    implausible: "That number looks off, so no XP.",
+    dayCap: "Today's limit for this is reached.",
+  },
   pulse: {
     ask: "How was that?",
     options: [["loved", "Loved it"], ["fine", "Fine"], ["not-for-me", "Not for me"]],
@@ -166,7 +179,7 @@ export const COPY = {
     pb_leap: { title: "New High", desc: "Beat your two-foot best." },
   },
   words: {
-    left: "Left", right: "Right", leftFoot: "Left foot", rightFoot: "Right foot", ms: "ms", s: "s", rsi: "RSI", apart: "apart",
+    left: "Left", right: "Right", leftFoot: "Left foot", rightFoot: "Right foot", ms: "ms", s: "s", score: "score", apart: "apart",
     steps: (n) => `${n} steps`, hops: (n) => `${n} hops`, split3: (s) => `3-step ${s} s`, inches: "inches", centimeters: "centimeters",
     simStop: "Stop simulating", ofTotal: (n, total) => `${n} of ${total}`,
   },

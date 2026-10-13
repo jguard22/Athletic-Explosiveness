@@ -193,6 +193,7 @@ html[data-fun] #jump-bars[data-ghost]::after { content: attr(data-ghost-label); 
 .ae-pulse { display: grid; gap: var(--sp-2); }
 .ae-pulse-row { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
 .ae-rest { color: var(--text-2); font-size: var(--fs-sm); }
+.ae-truth-note { display: block; max-width: 12ch; white-space: normal; color: var(--teal-text); font-size: var(--fs-xs); line-height: 1.25; }
 
 /* ---------------------------------------------------------------- board, level, settings */
 .ae-board { list-style: none; display: grid; gap: var(--sp-1); }
