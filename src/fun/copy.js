@@ -4,7 +4,7 @@
 
 export const COPY = {
   mode: { combine: "Combine", lab: "Lab", aria: "View" },
-  nav: { aria: "Sections", combine: "Combine", board: "Board", level: "Level", lab: "Lab details", settings: "Settings" },
+  nav: { aria: "Sections", combine: "Combine", board: "Board", level: "Level", lab: "Lab", settings: "Settings" },
   hero: {
     eyebrow: "Combine",
     title: "Two minutes. Five stations. How explosive are you?",
@@ -27,7 +27,14 @@ export const COPY = {
     stampDone: "Done",
     stampSkipped: "Skipped",
     stampNotRun: "Not run",
-    waitDevice: "Waiting for insoles. Connect them above, or use Simulate.",
+    waitDevice: "Waiting for insoles. Connect them, or try Simulate.",
+    connect: "Connect insoles",
+    simulate: "Simulate",
+    noResponse: "No step seen. Let's go again.",
+    notEnough: "Not enough steps. Let's go again.",
+    hops: (n) => `${n} hops so far. Keep them short.`,
+    hopsStart: "Hop in place, quick and springy.",
+    xpLine: (n) => `+${n} XP`,
     waitCal: "Stand still for a second so we can zero you.",
     standStill: "Stand still, then go.",
     getSet: "Get set",
@@ -71,6 +78,7 @@ export const COPY = {
   },
   card: {
     label: "Your Card",
+    lastCard: (name, flames) => `Last Card: ${name}, ${flames} of 5 flames.`,
     title: "Explosiveness Card",
     heat: "Heat",
     flamesOf: (n) => `${n} of 5 flames`,
@@ -91,6 +99,7 @@ export const COPY = {
     xp: (n) => `+${n} XP`,
     level: (n, title) => `Level ${n}, ${title}`,
     simNote: "Simulated Card: not saved, not ranked.",
+    simTag: "Simulated",
     warmNote: "Warm-up marks stay off the board and out of the bests. Rematch to set one.",
     prevNote: "Flames compare with your last visit.",
     rematchNote: "A rematch shows your ghost. Flames still compare with your last visit.",

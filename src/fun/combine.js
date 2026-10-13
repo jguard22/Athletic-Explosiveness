@@ -21,10 +21,10 @@ export function createCombine({ now = Date.now, sim = false, visit, sprintN = ()
 
   const fresh = (n) => ({
     id: `${visit.id}:${n}`, n, sim, startedAt: now(), endedAt: null, early: false, phase: "running", index: 0,
-    status: idle(), sprintN: sprintN(),
+    status: idle(), sprintN: sprintN(), prev: { lastEndAt: visit.lastEndAt, rested: visit.rested },
     leap: null, onefoot: { L: null, R: null }, firststep: { trials: [] }, sprint: null, bounce: { hops: 0, rsi: null, sets: 0 },
     counts: { leap: 0, onefoot: 0, firstSteps: 0, sprints: 0 },
-    local: { jump: null, single: null }, // best non-warm-up marks inside this round, so a later rep is judged against an earlier one
+    local: { jump: null, single: { L: null, R: null } }, // best non-warm-up marks inside this round, so a later rep is judged against an earlier one
   });
 
   const stationId = () => (R && R.phase === "running" ? STATION_IDS[R.index] : null);
@@ -36,13 +36,20 @@ export function createCombine({ now = Date.now, sim = false, visit, sprintN = ()
   }
   function finish(early) {
     if (!R || R.phase !== "running") return;
+    const finished = STATION_IDS.filter((id) => R.status[id] === "done").length;
     R.phase = "done"; R.endedAt = now(); R.early = early;
     for (const id of STATION_IDS) if (R.status[id] === "todo") R.status[id] = early ? "notrun" : "skipped";
-    visit.lastEndAt = R.endedAt; visit.rested = false; onVisit();
+    if (finished === 0) {
+      // nothing was done: it was no effort, so it neither counts toward the visit's two Combines nor starts a rest
+      visit.combines = Math.max(0, visit.combines - 1);
+      visit.lastEndAt = R.prev.lastEndAt; visit.rested = R.prev.rested;
+    } else { visit.lastEndAt = R.endedAt; visit.rested = false; }
+    onVisit();
   }
   const markDone = (id) => { R.status[id] = "done"; };
   const bestJump = () => { const a = best.jump?.() ?? null, b = R.local.jump; return a == null ? b : b == null ? a : Math.max(a, b); };
-  const bestSingle = () => { const a = best.single?.() ?? null, b = R.local.single; return a == null ? b : b == null ? a : Math.max(a, b); };
+  // a one-foot leap is judged against the same foot's best: the left against the left, the right against the right
+  const bestSingle = (side) => { const a = best.single?.(side) ?? null, b = R.local.single[side]; return a == null ? b : b == null ? a : Math.max(a, b); };
 
   function feedJump(rep) {
     const warmup = isWarmup(visit, sim);
@@ -65,12 +72,12 @@ export function createCombine({ now = Date.now, sim = false, visit, sprintN = ()
     // one foot at a time
     if (rep.foot !== "L" && rep.foot !== "R") return { accepted: false, station: id, reason: "wrong-foot", hint: "onefoot" };
     const side = rep.foot;
-    const prior = bestSingle();
+    const prior = bestSingle(side);
     const judgment = judgeJump(cm, prior, { warmup });
     R.counts.onefoot++;
     const cur = R.onefoot[side];
     if (!cur || cm > cur.cm) R.onefoot[side] = { cm, warmup, judgment, prior };
-    if (!warmup && (R.local.single == null || cm > R.local.single)) R.local.single = cm;
+    if (!warmup && (R.local.single[side] == null || cm > R.local.single[side])) R.local.single[side] = cm;
     const both = R.onefoot.L && R.onefoot.R;
     const out = { accepted: true, station: "onefoot", rep: { kind: "onefoot", side, cm, warmup, judgment, prior, n: rep.n }, stationDone: both ? "onefoot" : null, finished: false };
     if (both) { markDone("onefoot"); advance(); out.finished = R.phase === "done"; }
@@ -161,7 +168,8 @@ export function createCombine({ now = Date.now, sim = false, visit, sprintN = ()
       const full = isFullCircuit(st);
       const metrics = {};
       if (R.leap && !R.leap.warmup) metrics.jumpCm = R.leap.cm;
-      if (singleBest) metrics.singleCm = singleBest;
+      if (eligible(L)) metrics.singleL = L.cm;
+      if (eligible(Rr)) metrics.singleR = Rr.cm;
       if (bestMs != null) metrics.firstStepMs = bestMs;
       if (R.sprint) metrics[`sprint${R.sprint.n}`] = R.sprint.s;
       if (R.bounce.rsi != null && R.bounce.sets) metrics.rsi = R.bounce.rsi;

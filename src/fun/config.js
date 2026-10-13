@@ -208,6 +208,20 @@ export function bigHeightText(cm, system) {
   return cm >= 100 ? `${(cm / 100).toFixed(1)} m` : `${Math.round(cm)} cm`;
 }
 
+// ---------------------------------------------------------------- the ghost bar
+/**
+ * Bar lengths for a result against your best ("ghost"), as percents of a shared scale with a little headroom. For a time, shorter is
+ * better, so the bar shows speed (1 over the time): a PB always reaches further than the ghost mark. Pure, so the picture is testable.
+ * @param {"higher"|"lower"} better
+ */
+export function meterPcts(better, value, ghost) {
+  if (!(value > 0)) return { fill: 0, ghost: null };
+  if (!(ghost > 0)) return { fill: 100, ghost: null };
+  const v = better === "lower" ? 1 / value : value, g = better === "lower" ? 1 / ghost : ghost;
+  const top = Math.max(v, g) * 1.1;
+  return { fill: Math.round((v / top) * 100), ghost: Math.round((g / top) * 100) };
+}
+
 // ---------------------------------------------------------------- Card helpers
 /** The headline for a stamp, in storage units (cm, ms, s, rsi). */
 export function stampValue(id, s) {
@@ -235,7 +249,8 @@ export function makePbMetrics(fmt) {
   const m = (id, label, better, format, extra = {}) => ({ id, label, better, format, ...extra });
   return [
     m("jumpCm", "Two-foot leap", "higher", fmt.height, { nearMissAbs: 1, nearMissPct: 0.05 }),
-    m("singleCm", "One-foot leap", "higher", fmt.height, { nearMissAbs: 1, nearMissPct: 0.05 }),
+    m("singleL", "Left-foot leap", "higher", fmt.height, { nearMissAbs: 1, nearMissPct: 0.05 }),
+    m("singleR", "Right-foot leap", "higher", fmt.height, { nearMissAbs: 1, nearMissPct: 0.05 }),
     m("firstStepMs", "First step", "lower", fmt.ms, { nearMissAbs: 10, nearMissPct: 0.03 }),
     m("sprint3", "Sprint, 3 steps", "lower", fmt.seconds, { nearMissAbs: 0.03, nearMissPct: 0.05 }),
     m("sprint5", "Sprint, 5 steps", "lower", fmt.seconds, { nearMissAbs: 0.03, nearMissPct: 0.05 }),

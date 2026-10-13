@@ -186,7 +186,7 @@ test("personal-best metrics honour the display system through the format functio
   assert.equal(metric.find((m) => m.id === "jumpCm").format(33.1), "33.1 cm");
   assert.equal(imperial.find((m) => m.id === "jumpCm").format(33.1), "13.0 in");
   assert.equal(metric.find((m) => m.id === "firstStepMs").better, "lower");
-  assert.deepEqual(metric.map((m) => m.id), ["jumpCm", "singleCm", "firstStepMs", "sprint3", "sprint5", "sprint7", "rsi"]);
+  assert.deepEqual(metric.map((m) => m.id), ["jumpCm", "singleL", "singleR", "firstStepMs", "sprint3", "sprint5", "sprint7", "rsi"]);
 });
 
 test("every string the layer writes passes the kit's copy lint, and the wellness wording rules", () => {

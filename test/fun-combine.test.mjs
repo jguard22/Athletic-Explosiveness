@@ -63,8 +63,9 @@ test("a full simulated Combine: five stations in order, the Card's marks and the
   assert.deepEqual(s.xpInput, { jumps: { leap: 1, onefoot: 2 }, firstSteps: 3, sprints: 1, bounceSets: 1, stationsDone: 5, complete: true });
   assert.equal(C.roundXp(s.xpInput).total, 81);
   assert.deepEqual(s.first.sort(), ["bounce", "firststep", "leap", "onefoot", "sprint"]);
-  assert.deepEqual(Object.keys(s.metrics).sort(), ["firstStepMs", "jumpCm", "rsi", "singleCm", "sprint5"]);
-  assert.equal(s.metrics.singleCm, 19.6, "the better foot is the one-foot mark");
+  assert.deepEqual(Object.keys(s.metrics).sort(), ["firstStepMs", "jumpCm", "rsi", "singleL", "singleR", "sprint5"]);
+  assert.equal(s.metrics.singleL, 17.7); assert.equal(s.metrics.singleR, 19.6);
+  assert.equal(s.marks.onefoot, 19.6, "the better foot is the one-foot mark on the Card");
   assert.equal(s.onefoot.balance.pct, 10, "17.7 against 19.6 is about 10 percent apart");
   assert.equal(s.onefoot.balance.weaker, "Left");
   // the first three first-step trials only calibrate
@@ -101,7 +102,7 @@ test("warm-up: the first three jumps of a real visit are warm-ups (no best, no P
   const s = combine.summary();
   assert.equal(s.leap.warmup, true);
   assert.equal(s.metrics.jumpCm, undefined, "a warm-up jump never reaches the kit's personal bests");
-  assert.equal(s.metrics.singleCm, undefined);
+  assert.equal(s.metrics.singleL, undefined); assert.equal(s.metrics.singleR, undefined);
   assert.equal(s.marks.leap, null);
   assert.equal(s.warmupOnly, true);
 
@@ -122,15 +123,23 @@ test("warm-up: the first three jumps of a real visit are warm-ups (no best, no P
 });
 
 test("jumps are judged against your best: kit best first, an earlier rep of the same round second", () => {
-  const { combine } = make({ best: { jump: () => 33.1, single: () => 19.0 } });
+  const { combine } = make({ best: { jump: () => 33.1, single: (side) => (side === "L" ? 19.0 : 21.0) } });
   combine.start();
   const leap = combine.feed(jump("BOTH", 34.5));
   assert.equal(leap.rep.judgment.id, "pb"); assert.equal(leap.rep.prior, 33.1);
   const l = combine.feed(jump("L", 18.5));
-  assert.equal(l.rep.judgment.id, "photo", "within a centimetre of the best one-foot mark");
+  assert.equal(l.rep.judgment.id, "photo", "within a centimetre of the best LEFT-foot mark");
+  assert.equal(l.rep.prior, 19.0);
   const r = combine.feed(jump("R", 19.5));
-  assert.equal(r.rep.judgment.id, "pb");
+  assert.equal(r.rep.prior, 21.0, "the right foot is judged against the right foot's best, not the left's");
+  assert.equal(r.rep.judgment.id, "warmup", "1.5 cm under the right-foot best: neutral, never shame");
   assert.equal(combine.summary().marks.onefoot, 19.5);
+
+  // inside one round the second foot is NOT compared with the first: both are first marks
+  const f = make({}); f.combine.start();
+  f.combine.feed(jump("BOTH", 30));
+  assert.equal(f.combine.feed(jump("L", 17.7)).rep.judgment.id, "first");
+  assert.equal(f.combine.feed(jump("R", 19.6)).rep.judgment.id, "first");
 });
 
 test("skip and stop: skipped stations are named, a stopped Combine marks the rest as not run", () => {
@@ -173,6 +182,7 @@ test("the rest and the visit cap are enforced by start() on a real body, and ign
   assert.equal(soon.ok, false); assert.equal(soon.reason, "rest"); assert.ok(soon.waitMs > 0 && soon.waitMs <= C.CAPS.restMs);
   r.tick(C.CAPS.restMs);
   assert.equal(r.combine.start().ok, true, "after two minutes the rematch opens");
+  r.combine.feed(jump("BOTH", 31));
   r.combine.stop();
   r.tick(10 * C.CAPS.restMs);
   const third = r.combine.start();
@@ -180,7 +190,8 @@ test("the rest and the visit cap are enforced by start() on a real body, and ign
   assert.equal(r.visit.combines, 2);
   // I'm rested ends the rest early
   const q = make({ sim: false });
-  q.combine.start(); q.combine.stop();
+  q.visit.warm = true;
+  q.combine.start(); q.combine.feed(jump("BOTH", 30)); q.combine.stop();
   assert.equal(q.combine.start().reason, "rest");
   q.visit.rested = true;
   assert.equal(q.combine.start().ok, true);
@@ -189,9 +200,31 @@ test("the rest and the visit cap are enforced by start() on a real body, and ign
   for (let i = 0; i < 5; i++) { assert.equal(s.combine.start().ok, true); s.combine.stop(); }
 });
 
+test("a Combine with nothing finished was no effort: it neither uses up one of the visit's two nor starts a rest", () => {
+  const r = make({ sim: false });
+  r.combine.start();
+  assert.equal(r.visit.combines, 1);
+  r.combine.stop();
+  assert.equal(r.visit.combines, 0, "refunded");
+  assert.equal(r.visit.lastEndAt, null);
+  assert.equal(r.combine.start().ok, true, "no rest after a Combine that finished nothing");
+  r.visit.warm = true;
+  r.combine.feed(jump("BOTH", 30));
+  r.combine.stop();
+  assert.equal(r.visit.combines, 1, "a Combine with a finished station counts");
+  assert.ok(r.visit.lastEndAt != null);
+  assert.equal(r.combine.start().reason, "rest");
+  // and the previous rest state is put back when an empty round ends
+  r.tick(C.CAPS.restMs + 1);
+  const before = r.visit.lastEndAt;
+  r.combine.start(); r.combine.stop();
+  assert.equal(r.visit.lastEndAt, before);
+  assert.equal(r.visit.combines, 1);
+});
+
 test("a Combine id is unique per visit and round, so a double tap on Done counts once in the kit", () => {
   const a = make(), b = make();
-  a.combine.start(); const id1 = a.combine.round.id; a.combine.stop();
+  a.combine.start(); const id1 = a.combine.round.id; a.combine.feed(jump("BOTH", 30)); a.combine.stop();
   a.combine.start(); const id2 = a.combine.round.id;
   assert.notEqual(id1, id2);
   b.combine.start();

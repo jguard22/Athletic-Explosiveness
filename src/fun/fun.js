@@ -40,6 +40,11 @@ export const HAPTIC_PATTERNS = Object.freeze({
   landPop: [{ ms: 60, amp: 0.6 }],
 });
 
+/** The in-app motion control: "reduce" and "full" override the system setting for the kit's particles and animations; "auto" follows it. */
+export function setMotion(choice) {
+  celebrateKit.setReducedMotion(choice === "reduce" ? true : choice === "full" ? false : null);
+}
+
 const KEYS = { cards: "app.cards", hist: "app.hist", truthDay: "app.truthDay" };
 
 const defaultFmt = {
@@ -122,7 +127,7 @@ export function createFun(o = {}) {
   };
   const bests = {
     jump: () => kit.pb.best("jumpCm"),
-    single: () => kit.pb.best("singleCm"),
+    single: (side) => kit.pb.best(side === "R" ? "singleR" : "singleL"),
     sprint: (n) => kit.pb.best(`sprint${n}`),
     rsi: () => kit.pb.best("rsi"),
     firstStep: () => kit.pb.best("firstStepMs"),
@@ -177,9 +182,12 @@ export function createFun(o = {}) {
     return { ok: true, gained: res.gained, paidToday: state.xp };
   }
 
+  let running = 0;   // celebrations in flight (waiting for the gate, or playing)
   const api = {
     kit, sound, haptics, gate, firstWin, cards, history, bests, demo, sim,
     edge,
+    /** true while any reward is waiting for the gate or still playing */
+    busy: () => running > 0 || gate.pending > 0,
     /** Keep outputs in line with the person's choices (sound on / off). */
     syncOutputs({ sound: on = true } = {}) { if (sound.muted === on) sound.setMuted(!on, { persist: false }); },
     unlockAudio() { try { sound.unlock(); } catch { /* no audio */ } },
@@ -219,13 +227,14 @@ export function createFun(o = {}) {
     async celebrate(outcome) {
       if (!outcome || outcome.duplicate) return [];
       const staged = stage();
+      running++;
       try {
         return await playOutcome(outcome, {
           sound: staged.sound, haptics: staged.haptics, guardrails: kit.guard, gate, pause, maxToasts: 2, maxBadgeToasts: 2,
           celebrate: staged.celebrate, soundMap: { complete: "fanfare", pb: "coin" }, hapticMap: { pb: "pbPulse", complete: null, levelup: null },
           featureLabel: (id) => id,
         });
-      } catch { return []; }
+      } catch { return []; } finally { running--; }
     },
     /** Stop a celebration in flight and take down its toasts and dialog; drop what the gate still holds. */
     cancel() { epoch++; gate.clear("cancelled"); try { haptics.cancel(); } catch { /* none scheduled */ } clearOverlays(); },
