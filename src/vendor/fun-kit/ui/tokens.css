@@ -1,0 +1,63 @@
+/* bw-fun-kit design tokens.
+   fun-kit.css uses ONLY these --fk-* custom properties. In a real app, skip this
+   file and map them to the app's own tokens instead, e.g.
+       :root { --fk-accent: var(--accent); --fk-surface: var(--surface); ... }
+   (see README "Map tokens"). Defaults here are the BrilliantWear brand teal, dark + light.
+   --fk-accent-text and --fk-gold-text are the TEXT-SAFE versions of the brand colours (4.5:1 on every
+   surface, light and dark). Use them for any text or icon; --fk-accent / --fk-gold are for fills and glows.
+   The optional size and duration tokens (bars, badge tiles, outlines, widths, glows, motion distances, toast offsets)
+   are listed at the top of fun-kit.css and get their defaults there, so this file does not need to repeat them. */
+
+:root, :root[data-theme="dark"] {
+  color-scheme: dark;
+  --fk-accent: #00d4aa; --fk-accent-ink: #04211a; --fk-accent-text: #00d4aa; --fk-accent-soft: rgba(0, 212, 170, .14); --fk-accent-glow: rgba(0, 212, 170, .45);
+  --fk-gold: #ffcc55; --fk-gold-text: #ffcc55; --fk-gold-ink: #2a1d00; --fk-gold-soft: rgba(255, 204, 85, .14);
+  --fk-calm: #79b2f5; --fk-calm-soft: rgba(121, 178, 245, .14);
+  --fk-bg: #060b1a; --fk-surface: #0d1631; --fk-surface-2: #142045;
+  --fk-ink: #f2f5ff; --fk-ink-2: #c3cbe2; --fk-muted: #95a1c0;
+  --fk-line: rgba(120, 145, 210, .2); --fk-track: rgba(140, 165, 230, .2);
+  --fk-overlay: rgba(4, 8, 20, .78);
+  --fk-shadow: 0 24px 60px -20px rgba(0, 0, 0, .7);
+  --fk-focus: #ffffff;
+  --fk-rarity-common: #95a1c0; --fk-rarity-uncommon: #4fd970; --fk-rarity-rare: #5fa9f2; --fk-rarity-epic: #b98cff; --fk-rarity-legendary: #ffcc55;
+  --fk-confetti-1: #00d4aa; --fk-confetti-2: #ffcc55; --fk-confetti-3: #5fa9f2; --fk-confetti-4: #ff9f7a; --fk-confetti-5: #f2f5ff;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --fk-accent: #00c9a1; --fk-accent-ink: #02241c; --fk-accent-text: #007a64; --fk-accent-soft: #daf5ee; --fk-accent-glow: rgba(0, 170, 136, .35);
+    --fk-gold: #e6a512; --fk-gold-text: #8a5a00; --fk-gold-ink: #2a1d00; --fk-gold-soft: #fff1d1;
+    --fk-calm: #1f62b8; --fk-calm-soft: #e1ecfa;
+    --fk-bg: #f3f6fb; --fk-surface: #ffffff; --fk-surface-2: #eef2f9;
+    --fk-ink: #0c1530; --fk-ink-2: #39445f; --fk-muted: #5a6683;
+    --fk-line: rgba(20, 40, 90, .12); --fk-track: rgba(20, 40, 90, .12);
+    --fk-overlay: rgba(243, 246, 251, .88);
+    --fk-shadow: 0 28px 60px -24px rgba(13, 23, 51, .3);
+    --fk-focus: #0c1530;
+    --fk-rarity-common: #5a6683; --fk-rarity-uncommon: #0b7a2a; --fk-rarity-rare: #1f5fae; --fk-rarity-epic: #7a45d6; --fk-rarity-legendary: #a06a00;
+    --fk-confetti-1: #00c9a1; --fk-confetti-2: #e6a512; --fk-confetti-3: #2a78d6; --fk-confetti-4: #e0683a; --fk-confetti-5: #0c1530;
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --fk-accent: #00c9a1; --fk-accent-ink: #02241c; --fk-accent-text: #007a64; --fk-accent-soft: #daf5ee; --fk-accent-glow: rgba(0, 170, 136, .35);
+  --fk-gold: #e6a512; --fk-gold-text: #8a5a00; --fk-gold-ink: #2a1d00; --fk-gold-soft: #fff1d1;
+  --fk-calm: #1f62b8; --fk-calm-soft: #e1ecfa;
+  --fk-bg: #f3f6fb; --fk-surface: #ffffff; --fk-surface-2: #eef2f9;
+  --fk-ink: #0c1530; --fk-ink-2: #39445f; --fk-muted: #5a6683;
+  --fk-line: rgba(20, 40, 90, .12); --fk-track: rgba(20, 40, 90, .12);
+  --fk-overlay: rgba(243, 246, 251, .88);
+  --fk-shadow: 0 28px 60px -24px rgba(13, 23, 51, .3);
+  --fk-focus: #0c1530;
+  --fk-rarity-common: #5a6683; --fk-rarity-uncommon: #0b7a2a; --fk-rarity-rare: #1f5fae; --fk-rarity-epic: #7a45d6; --fk-rarity-legendary: #a06a00;
+  --fk-confetti-1: #00c9a1; --fk-confetti-2: #e6a512; --fk-confetti-3: #2a78d6; --fk-confetti-4: #e0683a; --fk-confetti-5: #0c1530;
+}
+:root {
+  --fk-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fk-font-display: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fk-fs-0: 1rem; --fk-fs-1: 1.125rem; --fk-fs-2: 1.5rem; --fk-fs-3: 2.25rem; --fk-fs-4: 3.5rem; --fk-fs-small: .875rem;
+  --fk-space-1: 4px; --fk-space-2: 8px; --fk-space-3: 12px; --fk-space-4: 16px; --fk-space-5: 24px; --fk-space-6: 32px;
+  --fk-radius: 20px; --fk-radius-sm: 12px; --fk-tap: 48px;
+  --fk-dur: 320ms; --fk-dur-fast: 160ms; --fk-dur-slow: 700ms;
+  --fk-ease: cubic-bezier(.22, 1, .36, 1); --fk-spring: cubic-bezier(.34, 1.56, .64, 1);
+}

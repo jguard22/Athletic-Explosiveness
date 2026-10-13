@@ -1,0 +1,189 @@
+/* bw-fun-kit components. Uses only --fk-* tokens (define them in tokens.css or map them to your app).
+   Motion is transform/opacity only. prefers-reduced-motion removes movement and keeps gentle fades.
+   setReducedMotion(true|false) sets :root[data-fk-motion="reduce"|"full"] so the same switch drives the CSS too.
+   Text and icons use --fk-accent-text / --fk-gold-text (4.5:1 safe); the plain accent and gold are fills and glows.
+
+   No raw pixel or millisecond value appears below this block: every size and duration is a token. The required
+   tokens (--fk-*, mapped by the app: colours, fonts, space, radius, tap size, durations, easings) are unchanged. The
+   optional ones use the prefix --fkx-, so an app's check that every --fk-* token is mapped still means "the required
+   set"; the block right here gives each optional one a default (in rem, or worked out from the required tokens),
+   through :where() so it never outranks anything an app or tokens.css sets. Override any of them to retune the kit:
+     lines     --fkx-hair --fkx-stroke --fkx-focus-w
+     bars      --fkx-bar-h --fkx-bar-h-sm --fkx-pip-h --fkx-dot --fkx-dot-gap
+     tiles     --fkx-flame-icon --fkx-badge-icon --fkx-badge-min --fkx-level-size --fkx-recap-min-h --fkx-tap-sm
+     widths    --fkx-toast-w --fkx-modal-w --fkx-tour-w
+     glows     --fkx-halo-sm --fkx-halo-lg --fkx-glow-sm --fkx-glow-lg --fkx-glow-badge
+     motion    --fkx-lift --fkx-lift-sm --fkx-lift-lg --fkx-dur-out --fkx-dur-fade --fkx-dur-fade-out --fkx-dur-glow
+     toasts    --fkx-toast-top --fkx-toast-bottom (the offset from the screen edge; see setToastPosition()) */
+:where(:root) {
+  --fkx-hair: thin; --fkx-stroke: .125rem; --fkx-focus-w: .1875rem;
+  --fkx-bar-h: .75rem; --fkx-bar-h-sm: .375rem; --fkx-pip-h: .625rem; --fkx-dot: .5rem; --fkx-dot-gap: .375rem;
+  --fkx-flame-icon: 4rem; --fkx-badge-icon: 3.25rem; --fkx-badge-min: 6.5rem; --fkx-level-size: 7.5rem; --fkx-recap-min-h: 16.25rem; --fkx-tap-sm: 2.25rem;
+  --fkx-toast-w: 26.25rem; --fkx-modal-w: 23.75rem; --fkx-tour-w: 21.25rem;
+  --fkx-halo-sm: .375rem; --fkx-halo-lg: .625rem; --fkx-glow-sm: 1.75rem; --fkx-glow-lg: 2.5rem; --fkx-glow-badge: 1.125rem;
+  --fkx-lift: 1rem; --fkx-lift-sm: .75rem; --fkx-lift-lg: 1.5rem;
+  --fkx-dur-out: calc(var(--fk-dur) * .75); --fkx-dur-fade: calc(var(--fk-dur) * .625); --fkx-dur-fade-out: calc(var(--fk-dur) * .375);
+  --fkx-dur-glow: calc(var(--fk-dur-slow) * 1.3);
+}
+
+.fk-i { flex: none; vertical-align: -.15em; }
+.fk-icon { display: inline-flex; }
+.fk-btn { font: 700 var(--fk-fs-0)/1 var(--fk-font); min-height: var(--fk-tap); padding: 0 var(--fk-space-5); border-radius: 100vmax; border: var(--fkx-hair) solid transparent; background: var(--fk-accent); color: var(--fk-accent-ink); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: var(--fk-space-2); transition: transform var(--fk-dur-fast) var(--fk-ease), opacity var(--fk-dur-fast) var(--fk-ease); }
+.fk-btn:hover { transform: translateY(calc(var(--fkx-stroke) / -2)); }
+.fk-btn:active { transform: scale(.97); }
+.fk-btn:disabled { opacity: .4; cursor: default; transform: none; }
+.fk-btn-quiet { background: transparent; color: var(--fk-ink); border-color: var(--fk-line); }
+.fk-btn-sm { min-height: var(--fkx-tap-sm); padding: 0 var(--fk-space-3); font-size: var(--fk-fs-small); }
+.fk-btn:focus-visible, .fk-badge:focus-visible, .fk-recap-track:focus-visible { outline: var(--fkx-focus-w) solid var(--fk-focus); outline-offset: var(--fkx-stroke); }
+.fk-chip { font: 700 .75rem/1 var(--fk-font); text-transform: uppercase; letter-spacing: .06em; padding: var(--fk-space-1) var(--fk-space-2); border-radius: 100vmax; background: var(--fk-accent-soft); color: var(--fk-accent-text); }
+
+/* progress bar */
+.fk-bar { height: var(--fkx-bar-h); border-radius: 100vmax; background: var(--fk-track); overflow: hidden; }
+.fk-bar-sm { display: block; height: var(--fkx-bar-h-sm); }
+.fk-bar-fill { display: block; height: 100%; width: var(--fk-pct, 0%); border-radius: inherit; background: var(--fk-accent); transform-origin: left; animation: fk-grow var(--fk-dur-slow) var(--fk-ease) both; }
+@keyframes fk-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* xp */
+.fk-xp { display: grid; gap: var(--fk-space-2); }
+.fk-xp-head { display: flex; justify-content: space-between; align-items: baseline; }
+.fk-xp-level { font: 800 var(--fk-fs-1)/1 var(--fk-font-display); color: var(--fk-ink); }
+.fk-xp-title { color: var(--fk-accent-text); font-weight: 700; font-size: var(--fk-fs-small); text-transform: uppercase; letter-spacing: .06em; }
+.fk-xp-foot { color: var(--fk-muted); font-size: var(--fk-fs-small); }
+
+/* streak flame */
+.fk-flame { display: grid; grid-template-columns: auto 1fr; gap: var(--fk-space-4); align-items: center; padding: var(--fk-space-4); border-radius: var(--fk-radius); background: var(--fk-surface); border: var(--fkx-hair) solid var(--fk-line); }
+.fk-flame-icon { width: var(--fkx-flame-icon); height: var(--fkx-flame-icon); border-radius: 50%; display: grid; place-items: center; background: var(--fk-gold-soft); color: var(--fk-gold-text, var(--fk-gold)); }
+/* The one looping animation keeps a literal period (slower than one cycle a second, so never a flash-rate hazard): no token can speed it up. */
+.fk-flame.is-lit .fk-flame-icon { box-shadow: 0 0 0 var(--fkx-halo-sm) var(--fk-gold-soft), 0 0 var(--fkx-glow-sm) var(--fk-accent-glow); animation: fk-flicker 2.4s ease-in-out infinite; }
+.fk-flame.is-blazing .fk-flame-icon { background: var(--fk-gold); color: var(--fk-gold-ink); }
+.fk-flame.is-warm .fk-flame-icon { opacity: .9; }
+.fk-flame.is-ember .fk-flame-icon { background: var(--fk-surface-2); color: var(--fk-muted); }
+.fk-flame.is-rest .fk-flame-icon { background: var(--fk-calm-soft); color: var(--fk-calm); }
+@keyframes fk-flicker { 0%, 100% { transform: scale(1); } 45% { transform: scale(1.06) rotate(-2deg); } 70% { transform: scale(.98) rotate(1.5deg); } }
+.fk-flame-num { display: flex; align-items: baseline; gap: var(--fk-space-2); }
+.fk-flame-num strong { font: 800 var(--fk-fs-3)/1 var(--fk-font-display); color: var(--fk-ink); }
+.fk-flame-num span { color: var(--fk-ink-2); font-weight: 600; }
+.fk-flame-copy { color: var(--fk-muted); font-size: var(--fk-fs-small); margin-top: var(--fk-space-1); }
+.fk-flame-tokens { color: var(--fk-calm); font-size: var(--fk-fs-small); margin-top: var(--fk-space-1); display: flex; align-items: center; gap: var(--fk-space-1); }
+.fk-flame-week { grid-column: 1 / -1; display: flex; gap: var(--fk-space-2); }
+.fk-pip { flex: 1; height: var(--fkx-pip-h); border-radius: 100vmax; background: var(--fk-track); }
+.fk-pip.is-on { background: var(--fk-accent); }
+.fk-pip.is-rest { background: var(--fk-calm); opacity: .6; }
+.fk-pip.is-today { outline: var(--fkx-stroke) solid var(--fk-ink-2); outline-offset: calc(var(--fkx-stroke) / 2); }
+
+/* challenge card */
+.fk-challenge { position: relative; display: grid; gap: var(--fk-space-3); padding: var(--fk-space-4); border-radius: var(--fk-radius); background: var(--fk-surface); border: var(--fkx-hair) solid var(--fk-line); }
+.fk-challenge.is-done { border-color: var(--fk-accent); background: var(--fk-accent-soft); }
+.fk-challenge-top { display: flex; justify-content: space-between; align-items: center; gap: var(--fk-space-2); }
+.fk-challenge-reward { display: inline-flex; align-items: center; gap: var(--fk-space-2); }
+.fk-challenge-xp { color: var(--fk-gold-text, var(--fk-gold)); font-weight: 800; }
+.fk-challenge-title { margin: 0; font: 750 var(--fk-fs-1)/1.25 var(--fk-font-display); color: var(--fk-ink); }
+.fk-challenge-desc { margin: 0; color: var(--fk-muted); }
+.fk-challenge-foot { display: flex; justify-content: space-between; align-items: center; color: var(--fk-ink-2); font-size: var(--fk-fs-small); }
+.fk-challenge-check { display: inline-flex; color: var(--fk-accent-text); animation: fk-pop var(--fk-dur) var(--fk-spring) both; }
+@keyframes fk-pop { from { transform: scale(0); } to { transform: scale(1); } }
+
+/* badges */
+.fk-badges-head { margin-bottom: var(--fk-space-3); color: var(--fk-ink-2); }
+.fk-badges-head strong { color: var(--fk-ink); font-size: var(--fk-fs-1); }
+.fk-badges { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--fkx-badge-min), 1fr)); gap: var(--fk-space-3); }
+.fk-badge { width: 100%; display: grid; justify-items: center; gap: var(--fk-space-2); padding: var(--fk-space-3); border-radius: var(--fk-radius-sm); background: var(--fk-surface); border: var(--fkx-hair) solid var(--fk-line); color: var(--fk-ink); cursor: pointer; font: 600 var(--fk-fs-small)/1.2 var(--fk-font); text-align: center; }
+.fk-badge-icon { width: var(--fkx-badge-icon); height: var(--fkx-badge-icon); border-radius: 50%; display: grid; place-items: center; color: var(--fk-rarity-common); background: var(--fk-surface-2); border: var(--fkx-stroke) solid var(--fk-rarity-common); }
+.fk-badge.fk-tier-uncommon .fk-badge-icon { color: var(--fk-rarity-uncommon); border-color: var(--fk-rarity-uncommon); }
+.fk-badge.fk-tier-rare .fk-badge-icon { color: var(--fk-rarity-rare); border-color: var(--fk-rarity-rare); }
+.fk-badge.fk-tier-epic .fk-badge-icon { color: var(--fk-rarity-epic); border-color: var(--fk-rarity-epic); }
+.fk-badge.fk-tier-legendary .fk-badge-icon { color: var(--fk-rarity-legendary); border-color: var(--fk-rarity-legendary); box-shadow: 0 0 var(--fkx-glow-badge) var(--fk-gold-soft); }
+.fk-badge.is-off .fk-badge-icon { opacity: .45; border-style: dashed; }
+.fk-badge.is-off .fk-badge-name { color: var(--fk-muted); }
+.fk-badge.is-secret .fk-badge-name { letter-spacing: .08em; }
+.fk-badge-tier { font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; color: var(--fk-muted); }
+.fk-badge .fk-bar { width: 100%; }
+
+/* recap carousel */
+.fk-recap { display: grid; gap: var(--fk-space-3); }
+.fk-recap-track { display: flex; gap: var(--fk-space-3); overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; padding: var(--fkx-stroke); border-radius: var(--fk-radius); }
+.fk-recap-track::-webkit-scrollbar { display: none; }
+.fk-recap-card { flex: 0 0 100%; scroll-snap-align: center; min-height: var(--fkx-recap-min-h); display: grid; align-content: center; gap: var(--fk-space-2); padding: var(--fk-space-5); border-radius: var(--fk-radius); background: var(--fk-surface); border: var(--fkx-hair) solid var(--fk-line); text-align: center; }
+.fk-recap-eyebrow { font: 700 var(--fk-fs-small)/1 var(--fk-font); text-transform: uppercase; letter-spacing: .08em; color: var(--fk-accent-text); }
+.fk-recap-card.fk-tone-gold .fk-recap-eyebrow { color: var(--fk-gold-text, var(--fk-gold)); }
+.fk-recap-card.fk-tone-calm .fk-recap-eyebrow { color: var(--fk-calm); }
+.fk-recap-big { font: 800 var(--fk-fs-4)/1 var(--fk-font-display); color: var(--fk-ink); letter-spacing: -.03em; }
+.fk-recap-big small { font-size: var(--fk-fs-2); color: var(--fk-accent-text); font-weight: 700; letter-spacing: 0; }
+.fk-recap-text { margin: 0 auto; max-width: 28ch; color: var(--fk-ink-2); font-size: var(--fk-fs-1); text-wrap: balance; }
+.fk-recap-list { list-style: none; margin: 0; padding: 0; color: var(--fk-muted); font-size: var(--fk-fs-small); }
+.fk-dots { display: flex; justify-content: center; gap: var(--fkx-dot-gap); }
+.fk-dot { width: var(--fkx-dot); height: var(--fkx-dot); border-radius: 50%; background: var(--fk-track); transition: transform var(--fk-dur-fast) var(--fk-ease), background var(--fk-dur-fast) var(--fk-ease); }
+.fk-dot.is-on { background: var(--fk-accent); transform: scale(1.35); }
+.fk-recap-actions { display: flex; gap: var(--fk-space-2); justify-content: center; flex-wrap: wrap; }
+
+/* ring */
+.fk-ring-track { stroke: var(--fk-track); }
+.fk-ring-bar { stroke: var(--fk-accent); transition: stroke-dashoffset var(--fk-dur-slow) var(--fk-ease); }
+.fk-ring-bar.fk-tone-gold { stroke: var(--fk-gold-text, var(--fk-gold)); } .fk-ring-bar.fk-tone-calm { stroke: var(--fk-calm); }
+.fk-ring-center { fill: var(--fk-ink); font: 800 1.1rem var(--fk-font-display); }
+
+/* fx canvas, glow, toasts */
+.fk-fx-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 1000; }
+.fk-glow { position: fixed; inset: 0; pointer-events: none; z-index: 1000; background: radial-gradient(70% 60% at 50% 40%, var(--fk-accent-glow), transparent 70%); animation: fk-fade var(--fkx-dur-glow) ease both; }
+@keyframes fk-fade { 0% { opacity: 0; } 35% { opacity: 1; } 100% { opacity: 0; } }
+/* bloom: the calm-app stand-in for confetti. One slow breath of light, transform and opacity only. */
+.fk-bloom { position: fixed; inset: 0; pointer-events: none; z-index: 1000; background: radial-gradient(80% 70% at 50% 42%, var(--fk-accent-glow), transparent 72%); animation: fk-bloom calc(var(--fk-dur-slow) * 2.4) var(--fk-ease) both; }
+@keyframes fk-bloom { 0% { opacity: 0; transform: scale(0.94); } 45% { opacity: 1; } 100% { opacity: 0; transform: scale(1.04); } }
+.fk-toasts { position: fixed; left: 0; right: 0; top: var(--fkx-toast-top, max(var(--fk-space-4), env(safe-area-inset-top, 0rem))); display: grid; justify-items: center; gap: var(--fk-space-2); z-index: 1001; pointer-events: none; padding: 0 var(--fk-space-4); }
+/* Bottom placement: setToastPosition("bottom") or a toast's position option. --fkx-toast-bottom is the offset from the bottom edge (ride above a tab bar). */
+.fk-toasts[data-fk-position="bottom"] { top: auto; bottom: var(--fkx-toast-bottom, max(var(--fk-space-4), env(safe-area-inset-bottom, 0rem))); }
+.fk-toast { pointer-events: auto; display: flex; gap: var(--fk-space-3); align-items: center; max-width: var(--fkx-toast-w); width: 100%; padding: var(--fk-space-3) var(--fk-space-4); border-radius: var(--fk-radius-sm); background: var(--fk-surface-2); color: var(--fk-ink); border: var(--fkx-hair) solid var(--fk-line); box-shadow: var(--fk-shadow); animation: fk-drop var(--fk-dur) var(--fk-spring) both; cursor: pointer; }
+.fk-toasts[data-fk-position="bottom"] .fk-toast { animation-name: fk-drop-up; }
+.fk-toast-icon { color: var(--fk-accent-text); display: inline-flex; }
+.fk-toast.fk-tone-gold .fk-toast-icon { color: var(--fk-gold-text, var(--fk-gold)); }
+.fk-toast.fk-tone-calm .fk-toast-icon { color: var(--fk-calm); }
+.fk-toast.fk-tier-rare { border-color: var(--fk-rarity-rare); } .fk-toast.fk-tier-epic { border-color: var(--fk-rarity-epic); } .fk-toast.fk-tier-legendary { border-color: var(--fk-rarity-legendary); }
+.fk-toast-body { display: grid; font-size: var(--fk-fs-small); color: var(--fk-ink-2); }
+.fk-toast-body strong { color: var(--fk-ink); font-size: var(--fk-fs-0); }
+.fk-toast.is-leaving { animation: fk-lift var(--fkx-dur-out) ease both; }
+.fk-toasts[data-fk-position="bottom"] .fk-toast.is-leaving { animation-name: fk-lift-down; }
+@keyframes fk-drop { from { opacity: 0; transform: translateY(calc(var(--fkx-lift) * -1)) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes fk-drop-up { from { opacity: 0; transform: translateY(var(--fkx-lift)) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes fk-lift { to { opacity: 0; transform: translateY(calc(var(--fkx-lift-sm) * -1)); } }
+@keyframes fk-lift-down { to { opacity: 0; transform: translateY(var(--fkx-lift-sm)); } }
+
+/* modal + tour */
+.fk-modal { position: fixed; inset: 0; z-index: 1002; display: grid; place-items: center; background: var(--fk-overlay); padding: var(--fk-space-4); animation: fk-fade-in var(--fk-dur) ease both; }
+.fk-modal.is-leaving { animation: fk-fade-out var(--fkx-dur-fade) ease both; }
+@keyframes fk-fade-in { from { opacity: 0; } } @keyframes fk-fade-out { to { opacity: 0; } }
+.fk-modal-card { width: min(var(--fkx-modal-w), 100%); display: grid; justify-items: center; gap: var(--fk-space-3); text-align: center; padding: var(--fk-space-6) var(--fk-space-5); border-radius: var(--fk-radius); background: var(--fk-surface); border: var(--fkx-hair) solid var(--fk-line); box-shadow: var(--fk-shadow); animation: fk-rise var(--fk-dur-slow) var(--fk-spring) both; }
+@keyframes fk-rise { from { opacity: 0; transform: translateY(var(--fkx-lift-lg)) scale(.94); } to { opacity: 1; transform: none; } }
+.fk-modal-eyebrow { font: 800 var(--fk-fs-small)/1 var(--fk-font); text-transform: uppercase; letter-spacing: .12em; color: var(--fk-gold-text, var(--fk-gold)); }
+.fk-modal-level { width: var(--fkx-level-size); height: var(--fkx-level-size); border-radius: 50%; display: grid; place-items: center; font: 800 var(--fk-fs-4)/1 var(--fk-font-display); color: var(--fk-accent-ink); background: var(--fk-accent); box-shadow: 0 0 0 var(--fkx-halo-lg) var(--fk-accent-soft), 0 0 var(--fkx-glow-lg) var(--fk-accent-glow); }
+.fk-modal-title { margin: 0; font: 800 var(--fk-fs-2)/1.15 var(--fk-font-display); color: var(--fk-ink); text-wrap: balance; }
+.fk-modal-sub { margin: 0; color: var(--fk-accent-text); font-weight: 700; text-wrap: balance; }
+.fk-modal-xp { margin: 0; color: var(--fk-muted); }
+.fk-modal-list { list-style: none; margin: 0; padding: 0; color: var(--fk-ink-2); }
+.fk-tour { position: fixed; inset: 0; z-index: 1003; touch-action: none; overscroll-behavior: contain; }
+.fk-tour-spot { position: absolute; left: var(--fk-spot-x); top: var(--fk-spot-y); width: var(--fk-spot-w); height: var(--fk-spot-h); border-radius: var(--fk-radius-sm); box-shadow: 0 0 0 100vmax var(--fk-overlay); outline: var(--fkx-stroke) solid var(--fk-accent); }
+.fk-tour-spot.is-none { inset: 0; left: 0; top: 0; width: 100%; height: 100%; box-shadow: none; background: var(--fk-overlay); outline: none; }
+/* The card is placed by JS (--fk-card-y is its top edge, already clamped to the viewport), so Back / Next / Skip never leave the screen. */
+.fk-tour-card { position: absolute; left: 50%; top: var(--fk-card-y, 50%); width: min(var(--fkx-tour-w), calc(100% - 2 * var(--fk-space-4))); max-height: calc(100% - 2 * var(--fk-space-4)); overflow-y: auto; touch-action: pan-y; transform: translateX(-50%); padding: var(--fk-space-4); border-radius: var(--fk-radius); background: var(--fk-surface); border: var(--fkx-hair) solid var(--fk-line); box-shadow: var(--fk-shadow); color: var(--fk-ink); }
+.fk-tour-card.is-center { top: 50%; transform: translate(-50%, -50%); }
+.fk-tour-card h2 { margin: 0 0 var(--fk-space-2); font: 750 var(--fk-fs-1)/1.2 var(--fk-font-display); text-transform: none; letter-spacing: 0; color: var(--fk-ink); }
+.fk-tour-card p { margin: 0 0 var(--fk-space-3); color: var(--fk-ink-2); }
+.fk-tour-count { margin: 0 0 var(--fk-space-1); color: var(--fk-muted); font-size: var(--fk-fs-small); white-space: nowrap; }
+.fk-tour-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--fk-space-2); }
+.fk-tour-row .fk-btn { white-space: nowrap; padding: 0 var(--fk-space-3); }
+.fk-tour-skip { margin-right: auto; }
+
+/* Reduced motion: the OS setting, or the explicit override from setReducedMotion(true). Keep the two blocks identical. */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-fk-motion="full"]) .fk-bar-fill, :root:not([data-fk-motion="full"]) .fk-flame.is-lit .fk-flame-icon, :root:not([data-fk-motion="full"]) .fk-challenge-check, :root:not([data-fk-motion="full"]) .fk-toast, :root:not([data-fk-motion="full"]) .fk-modal-card, :root:not([data-fk-motion="full"]) .fk-modal { animation: fk-fade-in var(--fkx-dur-fade) ease both; }
+  :root:not([data-fk-motion="full"]) .fk-toast.is-leaving, :root:not([data-fk-motion="full"]) .fk-modal.is-leaving { animation: fk-fade-out var(--fkx-dur-fade-out) ease both; }
+  :root:not([data-fk-motion="full"]) .fk-ring-bar, :root:not([data-fk-motion="full"]) .fk-dot, :root:not([data-fk-motion="full"]) .fk-btn { transition: none; }
+  :root:not([data-fk-motion="full"]) .fk-btn:hover, :root:not([data-fk-motion="full"]) .fk-btn:active { transform: none; }
+  :root:not([data-fk-motion="full"]) .fk-recap-track { scroll-behavior: auto; }
+}
+:root[data-fk-motion="reduce"] .fk-bar-fill, :root[data-fk-motion="reduce"] .fk-flame.is-lit .fk-flame-icon, :root[data-fk-motion="reduce"] .fk-challenge-check, :root[data-fk-motion="reduce"] .fk-toast, :root[data-fk-motion="reduce"] .fk-modal-card, :root[data-fk-motion="reduce"] .fk-modal { animation: fk-fade-in var(--fkx-dur-fade) ease both; }
+:root[data-fk-motion="reduce"] .fk-toast.is-leaving, :root[data-fk-motion="reduce"] .fk-modal.is-leaving { animation: fk-fade-out var(--fkx-dur-fade-out) ease both; }
+:root[data-fk-motion="reduce"] .fk-ring-bar, :root[data-fk-motion="reduce"] .fk-dot, :root[data-fk-motion="reduce"] .fk-btn { transition: none; }
+:root[data-fk-motion="reduce"] .fk-btn:hover, :root[data-fk-motion="reduce"] .fk-btn:active { transform: none; }
+:root[data-fk-motion="reduce"] .fk-recap-track { scroll-behavior: auto; }
+@media (prefers-reduced-motion: reduce) { :root:not([data-fk-motion="full"]) .fk-bloom { animation: fk-fade calc(var(--fk-dur-slow) * 2) ease both; } }
+:root[data-fk-motion="reduce"] .fk-bloom { animation: fk-fade calc(var(--fk-dur-slow) * 2) ease both; }
