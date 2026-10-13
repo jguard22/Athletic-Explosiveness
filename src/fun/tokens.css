@@ -1,0 +1,46 @@
+/* Combine layer tokens: the ONLY file of the engagement layer that holds raw colours, pixel sizes and durations.
+   fun.css and the kit's stylesheet read tokens, never literals (a test checks it).
+
+   The page's own tokens (--navy, --panel, --teal, --text ... in index.html) are the dark theme. This file adds what the
+   layer needs on top of them (text-safe accent colours, a second text colour, spacing, durations) and the light theme, which
+   overrides the same names, so every existing card follows it with no rule changed. All of it only applies when the layer is on
+   (html[data-fun], set by early.js), so ?fun=0 is the original page, pixel for pixel. Brand teal stays #00d4aa in the dark theme. */
+
+:root {
+  --sp-1: .25rem; --sp-2: .5rem; --sp-3: .75rem; --sp-4: 1rem; --sp-5: 1.5rem; --sp-6: 2rem; --sp-7: 3rem;
+  --tap: 2.75rem;
+  --line-w: 1px; --stroke-w: 2px; --focus-w: 3px;
+  --t-fast: .16s; --t-base: .32s; --t-slow: .7s; --t-stamp: .45s; --t-fill: .9s;
+  --ease-out: cubic-bezier(.22, 1, .36, 1); --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+  --font: -apple-system, "SF Pro Text", Inter, "Segoe UI", Roboto, sans-serif;
+  --font-display: ui-rounded, "SF Pro Rounded", -apple-system, "SF Pro Text", Inter, "Segoe UI", Roboto, sans-serif;
+  --fs-xs: .75rem; --fs-sm: .875rem; --fs-md: 1rem; --fs-lg: 1.125rem; --fs-xl: 1.5rem; --fs-2xl: 2.25rem; --fs-3xl: 3.25rem;
+  --lift: .5rem; --tilt: -3deg;
+  --bar-h: .75rem; --meter-h: 1.5rem; --mark-w: .25rem;
+  --card-max: 40rem;
+}
+
+/* dark theme extras (the page's own dark palette is the base) */
+html[data-fun] {
+  --teal-text: #00d4aa; --amber-text: #ffb020; --blue-text: #79a6ff; --red-text: #ff7a8a;
+  --text-2: #c9d0f0; --surface-3: #2f3677;
+  --track: rgba(140, 165, 230, .24); --overlay: rgba(10, 13, 38, .8);
+  --shadow: 0 24px 60px -20px rgba(0, 0, 0, .7); --focus: #ffffff;
+  --rarity-common: #9aa3c7; --rarity-uncommon: #4fd970; --rarity-rare: #79a6ff; --rarity-epic: #b98cff; --rarity-legendary: #ffcc55;
+  --confetti-1: #00d4aa; --confetti-2: #ffcc55; --confetti-3: #79a6ff; --confetti-4: #ff9f7a; --confetti-5: #eef1ff;
+  color-scheme: dark;
+}
+
+/* light theme: the same names, light values */
+html[data-fun][data-theme="light"] {
+  color-scheme: light;
+  --navy: #eef2fa; --navy-2: #e2e8f5; --navy-glow: #ffffff; --panel: #ffffff; --panel-2: #eef1f9; --surface-3: #e4e9f6;
+  --text: #11163a; --text-2: #394168; --muted: #55608a; --line: #cdd4ea;
+  --teal: #00c9a1; --teal-dim: #00a88a; --teal-text: #00705c; --on-teal: #02241c; --on-teal-dim: #02241c;
+  --amber: #e6a512; --amber-text: #7a4f00; --on-amber: #2a1a02; --armed-bg: #fff1d1;
+  --red: #d6334b; --red-text: #b3243c; --blue: #2a6fd6; --blue-text: #1f5fbf;
+  --track: rgba(20, 40, 90, .14); --overlay: rgba(243, 246, 251, .9);
+  --shadow: 0 24px 60px -24px rgba(13, 23, 51, .3); --focus: #11163a;
+  --rarity-common: #55608a; --rarity-uncommon: #0b7a2a; --rarity-rare: #1f5fae; --rarity-epic: #7a45d6; --rarity-legendary: #a06a00;
+  --confetti-1: #00c9a1; --confetti-2: #e6a512; --confetti-3: #2a78d6; --confetti-4: #e0683a; --confetti-5: #11163a;
+}

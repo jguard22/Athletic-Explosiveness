@@ -86,6 +86,10 @@
   footer a { color: var(--teal); }
   .note { font-size: .72rem; color: var(--muted); margin-top: 8px; line-height: 1.45; }
 </style>
+<!-- engagement layer (optional; ?fun=0 turns it off). early.js sets data-fun / data-theme before first paint; the styles only match when it did. -->
+<script src="src/fun/early.js"></script>
+<link rel="stylesheet" href="src/fun/tokens.css" />
+<link rel="stylesheet" href="src/fun/fun.css" />
 </head>
 <body>
 <header>
@@ -94,6 +98,9 @@
     <span class="sub">Athletic Explosiveness — vertical leap · directional first step · sprint accel · foot speed</span>
   </div>
   <div class="controls">
+    <div class="seg fun-only" id="mode-seg" role="group" aria-label="View">
+      <button data-mode="combine" aria-pressed="false">Combine</button><button data-mode="lab" aria-pressed="false">Lab</button>
+    </div>
     <div class="seg" id="units-seg" role="group" aria-label="Units">
       <button data-units="metric" aria-pressed="false">Metric</button><button data-units="imperial" aria-pressed="false">Imperial</button>
     </div>
@@ -105,8 +112,42 @@
   </div>
 </header>
 
-<div class="grid">
-  <div class="card span6">
+<!-- Combine layer: every block below is hidden unless the layer is on (html[data-fun]); the lab dashboard that follows is the original page. -->
+<nav class="fun-only ae-combine-only ae-nav" id="ae-nav" aria-label="Sections">
+  <a href="#fun-stage">Combine</a><a href="#fun-board">Board</a><a href="#fun-level">Level</a><a href="#fun-lab">Lab</a><a href="#fun-settings">Settings</a>
+</nav>
+
+<section class="fun-only ae-combine-only ae-sec" id="fun-stage" aria-labelledby="ae-stage-h" tabindex="-1">
+  <h2 class="ae-h" id="ae-stage-h">Your Combine</h2>
+  <div id="ae-stage-body">
+    <div class="ae-hero">
+      <p class="ae-eyebrow">Combine</p>
+      <h3 class="ae-title">Two minutes. Five stations. How explosive are you?</h3>
+      <p class="ae-sub">Jump, step, sprint and bounce. You finish with your Card and a rematch.</p>
+      <div class="ae-actions"><button class="primary ae-big" type="button" disabled>Start the Combine</button><button class="ae-ghost" type="button" disabled>Simulate (no insoles)</button></div>
+    </div>
+  </div>
+</section>
+
+<section class="fun-only ae-combine-only ae-sec" id="fun-board" aria-labelledby="ae-board-h">
+  <h2 class="ae-h" id="ae-board-h">Today's board</h2>
+  <div id="ae-board-body"></div>
+</section>
+
+<section class="fun-only ae-combine-only ae-sec" id="fun-level" aria-labelledby="ae-level-h">
+  <h2 class="ae-h" id="ae-level-h">Level and badges</h2>
+  <div id="ae-level-body"></div>
+</section>
+
+<section class="fun-only ae-combine-only ae-sec" id="fun-lab" aria-labelledby="ae-lab-h">
+  <h2 class="ae-h" id="ae-lab-h">Lab details</h2>
+  <p class="ae-sub">The original dashboard: tables, ground-truth boxes and sensor speeds.</p>
+  <div class="ae-actions"><button type="button" id="ae-lab-toggle" aria-expanded="false" aria-controls="lab-grid">Open lab details</button></div>
+  <div class="ae-tools" id="ae-tools" role="group" aria-label="Tools"></div>
+</section>
+
+<div class="grid" id="lab-grid">
+  <div class="card span6" id="card-jump">
     <h2>Vertical Leap <span class="tag" id="jump-count">0 reps</span></h2>
     <div>
       <span class="big" id="jump-h">—</span><span class="unit" data-u="height"></span>
@@ -121,7 +162,7 @@
     </table>
   </div>
 
-  <div class="card span6">
+  <div class="card span6" id="card-firststep">
     <h2>First-Step Quickness <span class="tag">audio GO · random delay</span></h2>
     <div class="go-stage">
       <div class="go-light" id="go-light"></div>
@@ -142,7 +183,7 @@
     </table>
   </div>
 
-  <div class="card span8">
+  <div class="card span8" id="card-sprint">
     <h2>Sprint Acceleration <span class="tag">first <span id="sp-n-label">5</span> steps · beep start</span></h2>
     <div class="row" style="align-items:center;">
       <button class="primary" id="btn-sprint">Arm Sprint (S)</button>
@@ -167,13 +208,13 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" id="card-wrist" data-needs="wrist-speed">
     <h2>Wrist — Arm Drive <span class="tag" id="wrist-state">not connected</span></h2>
     <div><span class="big" id="wrist-speed">—</span><span class="unit" data-u="speed"></span></div>
     <div class="sub2">arm-swing peak during last jump</div>
   </div>
 
-  <div class="card span6">
+  <div class="card span6" id="card-foot" data-needs="speed-L">
     <h2>Foot Speed — IMU <span class="tag">ZUPT · per swing</span></h2>
     <div class="row">
       <div class="kv"><div class="v"><span id="speed-L">—</span><span class="unit" data-u="speed"></span></div><div class="k">left peak</div></div>
@@ -183,17 +224,23 @@
     <div class="note">World-frame linear acceleration integrated between pressure-detected stances (velocity clamped to zero while the foot is flat — that's the insole's edge over IMU-only trackers). Calibrate residual scale against 240 fps video.</div>
   </div>
 
-  <div class="card span6">
+  <div class="card span6" id="card-rsi" data-needs="rsi">
     <h2>Reactive Strength <span class="tag">pogo hops</span></h2>
     <div><span class="big" id="rsi">—</span><span class="unit">RSI</span></div>
     <div class="sub2">contact <span id="rsi-contact">—</span> ms · flight <span id="rsi-flight">—</span> ms</div>
   </div>
 
-  <div class="card span12">
+  <div class="card span12" id="card-log">
     <h2>Session Log</h2>
     <div id="log"></div>
   </div>
 </div>
+
+<details class="fun-only ae-sec ae-settings" id="fun-settings">
+  <summary><h2 class="ae-h">Settings and privacy</h2></summary>
+  <div id="ae-settings-body"></div>
+</details>
+<div class="fun-only ae-sr" id="ae-live" role="status" aria-live="polite"></div>
 
 <footer>
   Live over Web Bluetooth via the <a href="https://github.com/brilliantsole/BrilliantWear-JavaScript-SDK">Brilliant Wear JavaScript SDK</a>.
@@ -202,6 +249,7 @@
 
 <script src="https://unpkg.com/brilliantsole@latest/build/brilliantsole.js"></script>
 <script src="units.js?v=2"></script>
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
+<script type="module" src="src/fun/boot.js"></script>
 </body>
 </html>

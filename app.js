@@ -11,7 +11,12 @@
 
    Units: a header Metric / Imperial switch (units.js). Everything stored,
    computed and exported is metric (cm, m, m/s, m/s²); values are shown and
-   typed in the chosen system and converted only at that edge. */
+   typed in the chosen system and converted only at that edge.
+
+   Engagement bridge: this file only REPORTS what happened, through fun() ->
+   a "bwfun" CustomEvent, and exposes a tiny read-only/control surface on
+   window.BWAE. It imports nothing from the optional Combine layer (src/fun/);
+   with the layer off (?fun=0) every event goes unheard and nothing changes. */
 
 (() => {
   "use strict";
@@ -64,12 +69,16 @@
       right: { q: null, v: [0, 0, 0], d: [0, 0, 0], swingStart: 0, planted: true, lastT: 0, peak: 0 },
     },
     peakSpeed: { left: null, right: null }, lastStride: null,
+    lastPair: null, hopChain: 0,           // consecutive pogo pairs share a flight (reported with the rsi event)
+    simHold: false,                        // the optional layer can park the Simulate script between stations
     wrist: { q: null, v: [0, 0, 0], lastT: 0, peak: 0, window: false, connected: false, best: null, last: null },
     audio: null,
   };
   const now = () => performance.now();
   const $ = (id) => document.getElementById(id);
   const U = window.BWUnits;   // display units; all state below stays metric
+  // One-way bridge to the optional Combine layer: report what happened (metric values), never ask it anything.
+  const fun = (type, d = {}) => window.dispatchEvent(new CustomEvent("bwfun", { detail: { type, ...d, sim: S.sim } }));
 
   // msg may carry U.html(...) spans: they repaint when the units switch flips,
   // so old log lines never mix systems with the cards.
@@ -86,6 +95,7 @@
     S.calUntil = now() + CFG.calMs;
     S.calBuf = { left: [], right: [] };
     log("Calibrating — stand still, weight even…");
+    fun("cal.start");
   }
   function feedCal(side, v) {
     if (now() > S.calUntil) return finishCal();
@@ -103,6 +113,7 @@
     const yr = S.imu.right.q ? yawOf(S.imu.right.q) : null;
     S.headingRef = yl != null && yr != null ? (yl + yr) / 2 : (yl ?? yr ?? 0);
     if (S.ref.left && S.ref.right) log(`Calibrated — ref L ${S.ref.left.toFixed(2)} · R ${S.ref.right.toFixed(2)} · forward locked.`, "ok");
+    fun("cal.done", { ok: !!(S.ref.left && S.ref.right) });
   }
 
   // ---------- vertical leap ----------
@@ -160,6 +171,7 @@
     S.flights.push({ start: takeoffAt, end: landAt, flightMs });
     if (S.flights.length > 8) S.flights.shift();
     renderJumps(rep);
+    fun("jump", { rep: { ...rep } });
     computeRsi();
     if (S.wrist.connected || S.sim) captureWristPeak();
     log(`Jump #${rep.n}: ${U.html("height", estCm, { trim: false })} (${Math.round(flightMs)} ms flight, ${foot}).`, "ok");
@@ -174,6 +186,9 @@
       $("rsi").textContent = (b.flightMs / contact).toFixed(2);
       $("rsi-contact").textContent = Math.round(contact);
       $("rsi-flight").textContent = Math.round(b.flightMs);
+      S.hopChain = S.lastPair === a ? S.hopChain + 1 : 1;   // pairs (1,2) then (2,3) are one chain of three hops
+      S.lastPair = b;
+      fun("rsi", { rsi: b.flightMs / contact, contactMs: Math.round(contact), flightMs: Math.round(b.flightMs), hops: S.hopChain + 1 });
     }
   }
 
@@ -209,16 +224,17 @@
     log(j.deviceCm == null
       ? `Rep ${j.n}: device height cleared.`
       : `Rep ${j.n}: device height ${U.html("height", j.deviceCm, { trim: false })} logged (est ${U.html("height", j.estCm, { trim: false })}).`);
+    fun("truth", { kind: "jump", n: j.n, estimate: j.estCm, device: j.deviceCm });
   });
 
   // ---------- first-step quickness ----------
-  function armGo() {
+  function armGo(opts) {
     if (S.fs.armed || S.sprint.armed || S.sprint.goAt != null) return;
     S.fs.armed = true;
     Object.assign(S.fs, { goAt: null, reactionMs: null, pushSide: null, pushMs: null, stepMs: null, baseline: { ...S.load } });
     $("btn-go").classList.add("armed");
     $("go-light").className = "go-light armed";
-    const delay = CFG.goDelayMinMs + Math.random() * (CFG.goDelayMaxMs - CFG.goDelayMinMs);
+    const delay = typeof opts?.delayMs === "number" ? opts.delayMs : CFG.goDelayMinMs + Math.random() * (CFG.goDelayMaxMs - CFG.goDelayMinMs);
     S.fs.timer = setTimeout(fireGo, delay);
     log("GO armed — hold still…");
   }
@@ -228,6 +244,7 @@
     S.fs.vdir = { left: [0, 0], right: [0, 0] };
     $("go-light").className = "go-light go";
     beep(880, 120);
+    fun("go", { kind: "firststep" });
     if (S.sim) simFirstStepResponse();
   }
   function fsTick(side, v, t) {
@@ -277,6 +294,7 @@
     $("btn-go").classList.remove("armed");
     $("go-light").className = "go-light";
     log(`First step #${trial.n}: ${trial.side}${trial.dir ? " → " + trial.dir : ""} — contact in ${trial.stepMs} ms.`, "ok");
+    fun("firststep", { trial: { ...trial } });
   }
 
   // ---------- directional quickness polar (AWE dashboard concept) ----------
@@ -330,13 +348,13 @@
   }
 
   // ---------- sprint acceleration (first N steps) ----------
-  function armSprint() {
+  function armSprint(opts) {
     const sp = S.sprint;
     if (sp.armed || sp.goAt != null || S.fs.armed || S.fs.goAt != null) return;
     sp.armed = true;
     $("btn-sprint").classList.add("armed");
     $("sp-light").className = "go-light sm armed";
-    sp.timer = setTimeout(fireSprint, CFG.goDelayMinMs + Math.random() * (CFG.goDelayMaxMs - CFG.goDelayMinMs));
+    sp.timer = setTimeout(fireSprint, typeof opts?.delayMs === "number" ? opts.delayMs : CFG.goDelayMinMs + Math.random() * (CFG.goDelayMaxMs - CFG.goDelayMinMs));
     log(`Sprint armed — ${sp.n} steps on the beep…`);
   }
   function fireSprint() {
@@ -344,6 +362,7 @@
     sp.armed = false; sp.goAt = now(); sp.steps = [];
     $("sp-light").className = "go-light sm go";
     beep(660, 150);
+    fun("go", { kind: "sprint" });
     sp.killT = setTimeout(() => finalizeSprint(true), CFG.sprintMaxMs);
     if (S.sim) simSprintResponse();
   }
@@ -366,7 +385,7 @@
     sp.goAt = null;
     $("sp-light").className = "go-light sm";
     $("btn-sprint").classList.remove("armed");
-    if (sp.steps.length < 2) { log("Sprint: not enough steps detected.", "warn"); return; }
+    if (sp.steps.length < 2) { log("Sprint: not enough steps detected.", "warn"); fun("sprint.fail"); return; }
     const last = sp.steps[sp.steps.length - 1];
     const vN = last.v;
     const trial = {
@@ -391,9 +410,14 @@
     U.bind($("sp-table").querySelector("tbody").firstElementChild);
     $("sp-table").querySelector("input").addEventListener("change", (e) => {
       const tr = sp.trials.find((x) => x.n === Number(e.target.dataset.sprint));
-      if (tr) { tr.gate = e.target.value === "" ? null : Number(e.target.value); log(`Sprint ${tr.n}: gate time ${tr.gate}s logged (est ${(tr.tN / 1000).toFixed(2)}s).`); }   // seconds — no unit conversion
+      if (tr) {
+        tr.gate = e.target.value === "" ? null : Number(e.target.value);
+        log(`Sprint ${tr.n}: gate time ${tr.gate}s logged (est ${(tr.tN / 1000).toFixed(2)}s).`);   // seconds — no unit conversion
+        fun("truth", { kind: "gate", n: tr.n, estimate: tr.tN / 1000, device: tr.gate });
+      }
     });
     log(`Sprint #${trial.n}: ${trial.N} steps in ${(trial.tN / 1000).toFixed(2)}s${vN != null ? ` → ${U.html("speed", vN, { trim: false })}` : ""}${timedOut ? " (timeout)" : ""}.`, "ok");
+    fun("sprint", { trial: { n: trial.n, N: trial.N, startSide: trial.startSide, t3: trial.t3, tN: trial.tN, vN: trial.vN, accel: trial.accel } });
   }
 
   // ---------- per-foot ZUPT speed (world-frame linear acceleration) ----------
@@ -567,13 +591,8 @@
   };
 
   // ---------- simulate ----------
-  function simStart() {
-    if (S.sim) return simStop();
-    S.sim = true;
-    $("btn-sim").classList.add("connected");
-    S.ref = { left: 0.5, right: 0.5 };
-    log("Simulate: 3 jumps (BOTH/L/R), pogo hops, then arm GO yourself.", "ok");
-    let t = 0;
+  // The scripted athlete: 3 jumps (BOTH / L / R), then three pogo hops. Built fresh so the optional layer can replay it for a rematch.
+  function buildSimScript() {
     const seq = [];
     const still = (ms) => { for (let i = 0; i < ms / 20; i++) seq.push({ l: 0.5, r: 0.5 }); };
     const jump = (foot, flightMs) => {
@@ -588,11 +607,20 @@
     still(800); jump("BOTH", 520); still(900); jump("L", 380); still(900); jump("R", 400);
     still(700); jump("BOTH", 300); jump("BOTH", 320); jump("BOTH", 310); // pogo-ish
     still(1200);
-    S.simScript = seq;
+    return seq;
+  }
+  function simStart() {
+    if (S.sim) return simStop();
+    S.sim = true;
+    $("btn-sim").classList.add("connected");
+    S.ref = { left: 0.5, right: 0.5 };
+    log("Simulate: 3 jumps (BOTH/L/R), pogo hops, then arm GO yourself.", "ok");
+    S.simScript = buildSimScript();
     S.simTimer = setInterval(() => {
       // pause the script while a GO/sprint drill is live — the drill scripts its
       // own response, and mixed frames would race the drill state machines
       if (S.fs.armed || S.fs.goAt != null || S.sprint.armed || S.sprint.goAt != null) return;
+      if (S.simHold) return;   // parked by the optional layer between stations
       const f = S.simScript.shift();
       if (!f) return; // idle at end; GO drill drives its own sim response
       const tt = now();
@@ -604,6 +632,7 @@
         S.wrist.peak = 4.2 + Math.random(); renderSpeed();
       }
     }, 20);
+    fun("sim", { on: true });
   }
   function simFirstStepResponse() {
     // scripted human-ish response ~230ms after GO, pushing off in a random direction
@@ -639,7 +668,9 @@
     S.sim = false;
     clearInterval(S.simTimer);
     $("btn-sim").classList.remove("connected");
+    S.simHold = false;
     log("Simulate stopped.");
+    fun("sim", { on: false });
   }
 
   // ---------- wire up ----------
@@ -647,8 +678,8 @@
   $("btn-wrist").addEventListener("click", () => SDKAdapter.connectWrist());
   $("btn-cal").addEventListener("click", startCal);
   $("btn-sim").addEventListener("click", simStart);
-  $("btn-go").addEventListener("click", armGo);
-  $("btn-sprint").addEventListener("click", armSprint);
+  $("btn-go").addEventListener("click", () => armGo());
+  $("btn-sprint").addEventListener("click", () => armSprint());
   document.querySelectorAll("#sp-seg button").forEach((b) => b.addEventListener("click", () => {
     S.sprint.n = Number(b.dataset.n);
     document.querySelectorAll("#sp-seg button").forEach((x) => x.classList.toggle("on", x === b));
@@ -673,6 +704,28 @@
     }
     if (e.code === "KeyS") armSprint();
   });
+  // The whole surface the optional Combine layer gets: ask whether a measurement is running, arm a drill, stop one, and park or replay
+  // the Simulate script. It never receives a way to change how anything is measured.
+  function cancelDrills() {
+    clearTimeout(S.fs.timer); clearTimeout(S.sprint.timer); clearTimeout(S.sprint.killT);
+    Object.assign(S.fs, { armed: false, goAt: null });
+    Object.assign(S.sprint, { armed: false, goAt: null });
+    $("btn-go").classList.remove("armed"); $("go-light").className = "go-light";
+    $("btn-sprint").classList.remove("armed"); $("sp-light").className = "go-light sm";
+  }
+  window.BWAE = Object.freeze({
+    /** true while a calibration, GO window, sprint or flight is being read: nothing should pop up then */
+    measuring: () => S.calUntil > 0 || S.fs.armed || S.fs.goAt != null || S.sprint.armed || S.sprint.goAt != null || S.combinedAirborneAt != null,
+    hasDevice: () => !!(SDKAdapter.devicePair && SDKAdapter.devicePair.isConnected),
+    isSim: () => S.sim,
+    sprintSteps: () => S.sprint.n,
+    armGo: (opts) => armGo(opts),
+    armSprint: (opts) => armSprint(opts),
+    cancelDrills,
+    simHold: (on) => { S.simHold = !!on; },
+    simReplay: () => { if (S.sim) S.simScript = buildSimScript(); },
+  });
+  document.addEventListener("bwtheme", drawPolar);   // the polar canvas reads theme tokens: redraw when the theme changes
   S.sprint.n = CFG.sprintStepsDefault;
   U.init($("units-seg"));
   drawPolar();
