@@ -106,6 +106,11 @@ try {
     check(await page.evaluate(() => ["card-jump", "card-firststep", "card-sprint", "card-wrist", "card-foot", "card-rsi", "card-log"].every((id) => getComputedStyle(document.getElementById(id)).display !== "none")), "?mode=lab: every original card is visible (nothing is hidden in Lab mode)");
     await page.screenshot({ path: path.join(OUT, "06-lab-light.png"), fullPage: false });
     check(await noHScroll(page), "Lab mode: no horizontal page scroll at 390 px");
+    // the original Simulate still plays exactly as before, and the layer stays out of it
+    await page.click("#btn-sim");
+    await waitFor(page, () => document.querySelector("#jump-table tbody").children.length >= 3, null, 12000);
+    check(await page.evaluate(() => window.BWFun.view() === "idle" && !document.querySelector(".ae-run")), "Lab mode: Simulate plays the original script, no Combine starts");
+    check(await page.evaluate(() => document.getElementById("jump-count").textContent.includes("reps") && document.querySelector(".fk-modal, .fk-toast") === null), "Lab mode: no celebration, no toast");
     await page.close();
   }
 
@@ -209,8 +214,8 @@ try {
     await page.evaluate(() => document.getElementById("fun-board").scrollIntoView());
     await page.waitForTimeout(300);
     await page.screenshot({ path: path.join(OUT, "04-board-light.png") });
-    // the cap: a third Combine in one visit is refused
-    await page.click("#ae-rested").catch(() => {});
+    // the cap: a second Combine is done, and a third one in this visit is refused
+    check(await page.evaluate(() => document.getElementById("ae-rematch").disabled && document.getElementById("ae-rest-line").textContent.includes("two Combines")), "a third Combine in one visit is refused (two per visit)");
     await page.evaluate(() => window.scrollTo(0, 0));
     // settings: motion, theme, forget
     await page.click("#fun-settings summary");

@@ -87,7 +87,7 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
     const warm = h("div", { class: "ae-warm" });
     const dev = h("div", { class: "ae-warm" });      // connect / simulate, when there is nothing to measure with yet
     const hint = h("p", { class: "ae-hint", id: "ae-hint" });   // a gentle one-liner: a nudge, a wrong-foot note
-    const promptCard = h("div", { class: "ae-prompt-card is-fresh" }, kicker, name, prompt, how, status, sub, hint, dev, warm);
+    const promptCard = h("div", { class: "ae-prompt-card is-fresh", tabindex: "-1" }, kicker, name, prompt, how, status, sub, hint, dev, warm);
     const resultSlot = h("div", { id: "ae-result-slot" });
     const actions = h("div", { class: "ae-run-actions" },
       button(COPY.stage.skip, o.act.skip, "", { id: "ae-skip" }),
@@ -168,6 +168,8 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
       /** the Moon / Jupiter line under the last jump (a game, never scored) */
       setFun(text) { const el = $("ae-fun"); if (el) el.textContent = text ?? ""; },
       clearResult() { $("ae-result-slot")?.replaceChildren(); },
+      /** keyboard and screen-reader users land on the station after Start, not on a button that is gone */
+      focus() { promptCard.focus({ preventScroll: true }); },
       ringGo() { promptCard.classList.add("ae-go-ring"); setTimeout(() => promptCard.classList.remove("ae-go-ring"), 800); },
     };
   }
@@ -233,7 +235,7 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
       h("div", { class: "ae-pulse-row" }, ...COPY.pulse.options.map(([id, label]) => button(label, () => o.act.pulse(id), "", { "data-answer": id })))) : null;
 
     const card = h("article", { class: "ae-card", "aria-labelledby": "ae-card-h", id: "ae-card" },
-      h("div", { class: "ae-card-head" }, h("h3", { class: "ae-card-title", id: "ae-card-h" }, COPY.card.title), o.sim ? h("span", { class: "ae-tag" }, COPY.card.simTag) : null),
+      h("div", { class: "ae-card-head" }, h("h3", { class: "ae-card-title", id: "ae-card-h", tabindex: "-1" }, COPY.card.title), o.sim ? h("span", { class: "ae-tag" }, COPY.card.simTag) : null),
       heat, stamps,
       story.length ? h("p", { class: "ae-story" }, story.join(" ")) : null,
       bal ? h("p", { class: "ae-line" }, `${COPY.words.left[0]} `, uval("height", bal.l), ` / ${COPY.words.right[0]} `, uval("height", bal.r), `: ${bal.pct}% ${COPY.words.apart}`) : null,
@@ -247,6 +249,7 @@ const fill = (el, ...kids) => { el.replaceChildren(...kids.flat(Infinity).filter
 
     return {
       el: card,
+      focus() { $("ae-card-h")?.focus({ preventScroll: true }); },
       /** called every second while a rest is running; ms 0 opens the rematch */
       setRest(ms, { cap = false } = {}) {
         if (cap) { rematch.disabled = true; rematch.textContent = COPY.card.rematch; restLine.textContent = COPY.card.cap; restLine.classList.remove("ae-hidden"); restedBtn.classList.add("ae-hidden"); return; }

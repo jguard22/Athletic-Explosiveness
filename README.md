@@ -127,7 +127,7 @@ is untouched and is **Lab mode**.
 |---|---|
 | `index.html` | Combine (or the mode you last chose with the header Combine / Lab switch) |
 | `?mode=lab` | the original dashboard, with the switch (not remembered) |
-| `?fun=0` | the original page, byte for byte: no layer module, no kit file is fetched |
+| `?fun=0` | the original page: it looks and behaves as before, and no layer module and no kit file is fetched |
 | `?booth=1` | booth mode: no profile, each visitor starts fresh, "Next visitor" resets (remembered) |
 
 No insoles? **Simulate** plays a whole Combine for you: first stamp at about 1.6 s,

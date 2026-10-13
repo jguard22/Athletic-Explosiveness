@@ -85,6 +85,7 @@
   footer { margin-top: 20px; color: var(--muted); font-size: .75rem; }
   footer a { color: var(--teal); }
   .note { font-size: .72rem; color: var(--muted); margin-top: 8px; line-height: 1.45; }
+  .fun-only { display: none; }   /* the optional Combine layer's markup stays hidden unless src/fun/fun.css shows it (html[data-fun]) */
 </style>
 <!-- engagement layer (optional; ?fun=0 turns it off). early.js sets data-fun / data-theme before first paint; the styles only match when it did. -->
 <script src="src/fun/early.js"></script>

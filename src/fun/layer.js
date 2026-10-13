@@ -144,6 +144,7 @@ function startCombine() {
   run = ui.renderRun(els.stage, { act: stageActs });
   if (ctx.sim) { if (r.n >= 2) AE.simReplay(); AE.simHold(false); }
   enterStation();
+  run.focus();
   startFirstWinTicker();
   say(COPY.stage.stationOf(1, C.STATIONS.length));
 }
@@ -228,7 +229,7 @@ function onFeed(d) {
   if (d.type === "firststep" || d.type === "sprint") run.setGo(false);
   const vm = repView(rep);
   const shown = run.showRep(vm);
-  if (rep.kind === "leap" || rep.kind === "onefoot") { lastJumpCm = rep.cm; refreshFun(); }
+  if (rep.kind === "leap" || rep.kind === "onefoot") { lastJumpCm = rep.cm; refreshFun(); barsGhost(ctx.fun.bests.jump()); }
   say(announcement(rep));
   // the first win: the first stamp, timed from the press
   if (rep.kind === "leap") {
@@ -247,6 +248,17 @@ function onFeed(d) {
   if (r.stationDone) { clearTimeout(armTimer); enterStation(); return; }
   refreshSub();
   if (rep.kind === "firststep") scheduleArm(ctx.sim ? 500 : 1300);
+}
+
+/** The lab's jump bars get a dashed line at your best (the ghost), so the original chart shows what to beat too. */
+function barsGhost(best) {
+  const bars = document.getElementById("jump-bars");
+  if (!bars) return;
+  if (best == null) { bars.removeAttribute("data-ghost"); return; }
+  const vals = [...bars.querySelectorAll("[data-base]")].map((e) => Number(e.dataset.base)).filter(Number.isFinite);
+  const max = Math.max(...vals, 1);
+  bars.style.setProperty("--ae-ghost-y", `${Math.min(100, (best / max) * 78)}%`);   // the page draws a bar at (cm / max) * 78 percent
+  bars.dataset.ghost = "on"; bars.dataset.ghostLabel = COPY.near.best;
 }
 
 function repView(rep) {
@@ -325,6 +337,7 @@ function finishRound({ silent = false } = {}) {
     sim: ctx.sim, canBoard, boardNote, pulseDue, prevVisit: !!res.prev, act: stageActs,
   });
   cardHandle.el.scrollIntoView?.({ block: "start", behavior: document.documentElement.dataset.motion === "reduce" ? "auto" : "smooth" });
+  cardHandle.focus();
   watchRest();
   renderLevel();
   say(COPY.stage.live.card);

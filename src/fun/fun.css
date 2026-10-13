@@ -158,8 +158,12 @@ html[data-fun][data-motion="reduce"] button { transition: none; }
 .ae-key.is-ghost::before { width: var(--mark-w); height: var(--sp-3); background: var(--text); border-radius: 0; }
 .ae-fun { color: var(--text-2); font-size: var(--fs-sm); font-style: italic; }
 
+/* the lab's jump bars: a dashed ghost line at your best, labelled in words (position by the page's own scale, set by layer.js) */
+html[data-fun] #jump-bars { position: relative; }
+html[data-fun] #jump-bars[data-ghost]::after { content: attr(data-ghost-label); position: absolute; left: 0; right: 0; bottom: var(--ae-ghost-y, 0%); border-top: var(--stroke-w) dashed var(--text-2); color: var(--text-2); font-size: var(--fs-xs); text-align: right; line-height: 1; pointer-events: none; }
+
 /* ---------------------------------------------------------------- the Card */
-.ae-card { background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%); border: var(--stroke-w) solid var(--teal); border-radius: var(--radius-card); padding: var(--sp-4); display: grid; gap: var(--sp-3); }
+.ae-card { scroll-margin-top: calc(var(--tap) + var(--sp-4)); background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%); border: var(--stroke-w) solid var(--teal); border-radius: var(--radius-card); padding: var(--sp-4); display: grid; gap: var(--sp-3); }
 .ae-card-head { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .ae-card-title { font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 800; }
 .ae-tag { padding: var(--sp-1) var(--sp-3); border-radius: var(--radius-pill); border: var(--line-w) dashed var(--muted); color: var(--text-2); font-size: var(--fs-xs); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
