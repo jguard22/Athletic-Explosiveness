@@ -131,6 +131,17 @@ is untouched and is **Lab mode**.
 | `?booth=1` | booth mode: no profile, each visitor starts fresh, "Next visitor" resets (remembered). A booth visitor sees no XP, level or "come back" line on the Card, and only Sound, Motion and Theme in Settings |
 | `?staff=1` | on a booth device, shows the staff controls in Settings (booth switch, stats CSV, Clear the board, Forget my data) for this tab; the parameter is removed from the address |
 
+**First screen and look (design pass 2026-10-25, notes in `docs/REVIEW-2026-10-25.md`).** The first screen is the headline and
+one big button, the next drill (the Combine always opens on the two-foot leap, with what to beat and the foot to chase), the
+**height tower** (a ruler in the chosen unit with your best flagged in amber and, if there is one, the top of today's board) and the
+five stations with your best at each ("No mark yet" for a first-timer). With no insoles connected, **Simulate** is the main button and
+the insoles chip says so; a running Simulate carries a dashed "Simulated demo" bar. The interface scales with the screen (about
+1.4x at 1080p), so a TV across a room reads like a laptop at arm's length: numerals are condensed display type, labels are mono, and
+GO turns the whole panel teal. Colour roles: measured is teal, a personal best is amber, simulated is periwinkle and dashed. Type is
+the platform's own (Avenir Next Condensed or Bahnschrift for display, the system sans and mono), so it works offline.
+After a station finishes, its result stays on screen for a few seconds (`CAPS.resultDwellMs`) before the next station's "to beat"
+replaces it; the rail keeps every finished value. During a round the section links are hidden.
+
 No insoles? **Simulate** plays a whole Combine for you: first stamp at about 1.6 s,
 the Card at about 18 s. Nothing simulated is ever saved, ranked or put on the board,
 and a simulated athlete gets no level-up dialog or badge toasts. In a browser without
@@ -219,6 +230,8 @@ cosmetics, seasonal events, kiosk attract mode, device haptics.
 - `fun-combine`: the station state machine driven with the page's own events.
 - `fun-kit`: the layer against the real vendored kit (XP, badges, Heat from the last
   visit, the demo twin, Forget my data, the first-win clock, ground truth, the gate).
+- `fun-view`: the first screen, the height tower and the rail as pure data (bests per station, the foot to chase, ruler ticks in both unit
+  systems, flag spacing, rail values), the result dwell, and the no-sideways-panning rules for the styles.
 - `fun-local`: the board and the stats.
 - `fun-boundaries`: safety and measurement code never imports the kit, one gate for
   every reward, one `createFunKit`, only named events.
@@ -231,7 +244,8 @@ Imperial repaint, a real round fed with the page's own events, the board, the re
 rule, Forget my data, the motion and theme controls, zero console errors, no
 horizontal scroll at 390 and 414 px, and it saves the shots in
 `docs/screenshots/fun/` (390 px, light, dark and reduced motion).
-`npm run serve` serves the page on port 5492.
+`npm run serve` serves the page on port 5492. `node scripts/shoot.mjs <outdir> <prefix>` shoots the main screens at 1280, 1920 (TV), 390 and 320,
+light and dark, and fails on a sideways overflow or a console error.
 
 ## SDK notes
 All hardware touchpoints live in `SDKAdapter` (app.js) — `BS.DevicePair.insoles`
