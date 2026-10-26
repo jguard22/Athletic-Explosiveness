@@ -33,6 +33,7 @@ export const CAPS = Object.freeze({
   combinesPerVisit: 2,
   restMs: 120000,         // a visible two-minute rest before a same-visit rematch
   visitGapMs: 10800000,   // three hours idle ends a visit; an earlier Card counts as the PREVIOUS visit only once it is this old (or from another day)
+  resultDwellMs: 3200,    // a finished station's result stays on screen this long before the next station's "to beat" takes its place (the rail keeps the value)
   skipGuardMs: 700,       // a station just opened ignores a Skip tap for this long, so a double tap skips one station, not two
   truthPerDay: 20,        // XP from ground-truth pairs per day
   boardMin: 5,            // results needed before a rank is shown
@@ -238,6 +239,70 @@ export function meterPcts(better, value, ghost) {
   const v = better === "lower" ? 1 / value : value, g = better === "lower" ? 1 / ghost : ghost;
   const top = Math.max(v, g) * 1.1;
   return { fill: Math.round((v / top) * 100), ghost: Math.round((g / top) * 100) };
+}
+
+// ---------------------------------------------------------------- the first screen, the tower and the rail (what is drawn, as pure data)
+const pos = (v) => (Number.isFinite(v) && v > 0 ? v : null);
+/**
+ * What the first screen shows: one entry per station with the athlete's best so far (storage units, or null for no mark yet), the
+ * next drill (the Combine always opens on the two-foot leap) and the foot to chase when the left and right leaps are 5 percent or more apart.
+ * `b` is what the kit's personal bests hold: { jump, singleL, singleR, firstStep, sprint, sprintN, rsi }.
+ */
+export function idleView(b = {}) {
+  const jump = pos(b.jump), l = pos(b.singleL), r = pos(b.singleR), fs = pos(b.firstStep), sp = pos(b.sprint), rsi = pos(b.rsi);
+  const stations = {
+    leap: jump != null ? { kind: "height", value: jump } : null,
+    onefoot: l != null || r != null ? { kind: "height", value: Math.max(l ?? 0, r ?? 0), l, r } : null,
+    firststep: fs != null ? { kind: "ms", value: fs } : null,
+    sprint: sp != null ? { kind: "s", value: sp, n: b.sprintN ?? 5 } : null,
+    bounce: rsi != null ? { kind: "score", value: rsi } : null,
+  };
+  const marks = Object.values(stations).filter(Boolean).length;
+  const bal = balance(l, r);
+  return { stations, marks, returning: marks > 0, next: STATION_IDS[0], chase: bal && bal.pct >= 5 && bal.weaker ? { side: bal.weaker, pct: bal.pct } : null };
+}
+
+/**
+ * The height tower's ruler. Ticks sit every 10 cm, or every 4 in when the switch is on imperial (a little over 10 cm), with a small tick
+ * between and a label on the big ones; the top is the next big tick above the tallest value plus 15 percent headroom, and never lower
+ * than 50 cm (20 in), so a first leap does not fill the whole tower. Heights stay in cm: only the labels are in the chosen system.
+ */
+export function towerScale({ system = "metric", values = [] } = {}) {
+  const imperial = system === "imperial";
+  const stepCm = imperial ? 4 * 2.54 : 10, stepLabel = imperial ? 4 : 10;
+  const floorCm = imperial ? 20 * 2.54 : 50;
+  const tallest = Math.max(floorCm / 1.15, ...values.filter((v) => Number.isFinite(v) && v > 0));
+  const steps = Math.max(4, Math.ceil((tallest * 1.15) / stepCm - 1e-9));
+  const maxCm = steps * stepCm;
+  const every = steps > 9 ? 2 : 1;   // a tall scale labels every second big tick, so the numerals never touch
+  const ticks = [];
+  for (let i = 0; i <= steps; i++) {
+    ticks.push({ cm: i * stepCm, label: i % every === 0 ? i * stepLabel : null, major: true });
+    if (i < steps) ticks.push({ cm: (i + 0.5) * stepCm, label: null, major: false });
+  }
+  return { maxCm, steps, ticks, pct: (cm) => Math.max(0, Math.min(100, (cm / maxCm) * 100)) };
+}
+/** Keep flags that would overlap apart: positions in percent (sorted low to high), each at least `gap` above the one below. */
+export function flagOffsets(pcts, gap = 9) {
+  const out = [];
+  [...pcts.keys()].sort((a, b) => pcts[a] - pcts[b]).forEach((i) => {
+    const prev = out.length ? out[out.length - 1].at : -Infinity;
+    out.push({ i, at: Math.max(pcts[i], prev + gap) });
+  });
+  const by = [];
+  out.forEach((o) => { by[o.i] = o.at; });
+  return by;
+}
+/** What each finished station shows in the rail, in storage units: { leap: {kind: "height", value}, ... } (nothing for a station not done). */
+export function railValues(sum) {
+  const out = {};
+  if (!sum) return out;
+  if (sum.status.leap === "done" && sum.leap) out.leap = { kind: "height", value: sum.leap.cm };
+  if (sum.status.onefoot === "done" && sum.onefoot.anyBest) out.onefoot = { kind: "height", value: sum.onefoot.anyBest };
+  if (sum.status.firststep === "done" && sum.firststep.bestMs != null) out.firststep = { kind: "ms", value: sum.firststep.bestMs };
+  if (sum.status.sprint === "done" && sum.sprint) out.sprint = { kind: "s", value: sum.sprint.s };
+  if (sum.status.bounce === "done" && sum.bounce.rsi != null) out.bounce = { kind: "score", value: sum.bounce.rsi };
+  return out;
 }
 
 // ---------------------------------------------------------------- Card helpers
