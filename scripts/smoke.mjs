@@ -38,8 +38,8 @@ const browser = await chromium.launch({ channel: "chrome", headless: true });
 const hard = setTimeout(() => { console.error("HARD TIMEOUT"); process.exit(2); }, 240000);
 const errors = [];
 
-async function newPage({ width = 390, scheme = "light", motion = "no-preference", locale = "en-US" } = {}) {
-  const ctx = await browser.newContext({ viewport: { width, height: 844 }, colorScheme: scheme, reducedMotion: motion, locale, deviceScaleFactor: 1 });
+async function newPage({ width = 390, height = 844, scheme = "light", motion = "no-preference", locale = "en-US" } = {}) {
+  const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: scheme, reducedMotion: motion, locale, deviceScaleFactor: 1 });
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
   page.on("console", (m) => { if (m.type() === "error" || m.type() === "warning") errors.push(`${m.type()}: ${m.text()}`); });
@@ -47,7 +47,17 @@ async function newPage({ width = 390, scheme = "light", motion = "no-preference"
   return page;
 }
 const waitFor = (page, fn, arg, timeout = 30000) => page.waitForFunction(fn, arg, { timeout, polling: 100 });
-const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
+/** The page clips sideways overflow (so scrollWidth always looks fine): look for elements that poke past the screen and are not inside a scroller of their own. */
+const noHScroll = (page) => page.evaluate(() => {
+  const W = window.innerWidth;
+  const scroller = (el) => { for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) { if (/(auto|scroll)/.test(getComputedStyle(p).overflowX)) return true; } return false; };
+  if (document.documentElement.scrollWidth > W + 1) return false;
+  for (const el of document.querySelectorAll("body *")) {
+    const b = el.getBoundingClientRect();
+    if (b.width && b.right > W + 1 && getComputedStyle(el).position !== "fixed" && !scroller(el)) return false;
+  }
+  return true;
+});
 const evt = (page, detail) => page.evaluate((d) => window.dispatchEvent(new CustomEvent("bwfun", { detail: { sim: false, ...d } })), detail);
 const keysLike = (page, re) => page.evaluate((src) => Object.keys(localStorage).filter((k) => new RegExp(src).test(k)), re);
 
@@ -235,6 +245,88 @@ try {
     await page.waitForTimeout(300);
     check((await keysLike(page, "^fk:")).length === 0 && (await keysLike(page, "^bw-ae-(board|stats|safety|visit)$")).length === 0, "Forget my data (kit.reset) leaves no kit, board, visit or stats key behind");
     check(await page.evaluate(() => window.BWFun.xp().total === 0), "XP is back to zero after forgetting");
+    await page.close();
+  }
+
+  // ---- G: the first screen (bests, next drill, tower), the result dwell, the tower in both unit systems, GO as the whole panel ----
+  {
+    const page = await newPage({ width: 1280, scheme: "dark" });
+    await page.goto(BASE);
+    await page.waitForTimeout(800);
+    check(await page.evaluate(() => document.querySelectorAll(".ae-program .ae-prog").length === 5 && document.querySelectorAll(".ae-program .ae-none").length === 5), "first visit: the five stations are listed, each says No mark yet");
+    check(await page.evaluate(() => /Next drill/i.test(document.querySelector(".ae-next .ae-kicker")?.textContent ?? "") && /Two-foot leap/i.test(document.querySelector(".ae-next-name")?.textContent ?? "")), "first visit: the next drill is named (two-foot leap)");
+    check(await page.evaluate(() => !!document.querySelector(".ae-hero .ae-tower .ae-flag.is-empty")), "first visit: the tower is empty and says where the first mark goes");
+    check(await page.evaluate(() => document.getElementById("ae-sim").classList.contains("primary") && /No insoles connected/i.test(document.getElementById("ae-device").textContent)), "no insoles: Simulate is the main button and the chip says why");
+    check(await page.evaluate(() => document.getElementById("ae-start") !== null && !document.getElementById("ae-start").disabled), "Start the Combine is still one tap away");
+    for (const w of [320, 375, 402, 1280]) {
+      await page.setViewportSize({ width: w, height: 800 });
+      await page.waitForTimeout(150);
+      check(await noHScroll(page), `first screen: nothing pokes past the screen at ${w} px`);
+    }
+    await page.setViewportSize({ width: 1280, height: 800 });
+    // a real first leap: the result stays up a few seconds while the next station opens, then the target takes its place
+    await page.click("#ae-start");
+    await page.click("#ae-warm");
+    await evt(page, { type: "jump", rep: { n: 1, foot: "BOTH", flightMs: 520, estCm: 33.1 } });
+    await page.waitForTimeout(500);
+    check(await page.evaluate(() => /One foot/i.test(document.querySelector(".ae-station")?.textContent ?? "") && !document.getElementById("ae-result").classList.contains("is-wait") && !!document.querySelector("#ae-result .ae-tower-fill")), "after a leap the next station opens and the leap's result (with the tower) is still on screen");
+    check(await page.evaluate(() => /Leap/i.test(document.querySelector(".ae-rail-item.is-done")?.textContent ?? "") && /\d/.test(document.querySelector(".ae-rail-item.is-done .ae-rail-val")?.textContent ?? "")), "the rail keeps the finished leap's value");
+    await page.waitForTimeout(3300);
+    check(await page.evaluate(() => document.getElementById("ae-result").classList.contains("is-wait")), "a few seconds later the next station's target replaces the result");
+    // the tower follows the unit switch
+    const labels = () => page.$$eval("#ae-result .ae-ruler .ae-tick.is-major i", (a) => a.map((x) => x.textContent));
+    await page.click('#units-seg button[data-units="imperial"]');
+    const imp = await labels();
+    await page.click('#units-seg button[data-units="metric"]');
+    const met = await labels();
+    check(imp.includes("20") && imp.includes("4") && met.includes("50") && met.includes("10"), `the tower's ruler follows Metric / Imperial (${imp.join(",")} / ${met.join(",")})`);
+    await page.click('#units-seg button[data-units="imperial"]');
+    await page.close();
+  }
+  // G2: a returning athlete sees their bests, the next drill with something to beat, and a flag on the tower
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: "dark", locale: "en-US" });
+    await ctx.route("**/unpkg.com/**", (r) => r.fulfill({ status: 200, contentType: "text/javascript", body: "/* sdk stub */" }));
+    let page = await ctx.newPage();
+    page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
+    page.on("console", (m) => { if (m.type() === "error" || m.type() === "warning") errors.push(`${m.type()}: ${m.text()}`); });
+    await page.goto(BASE);
+    await page.waitForTimeout(700);
+    await page.click("#ae-start"); await evt(page, { type: "jump", rep: { n: 1, foot: "BOTH", flightMs: 520, estCm: 33.1 } });
+    await page.click("#ae-stop"); await page.click("#ae-rested"); await page.click("#ae-rematch"); await page.click("#ae-warm");
+    const feeds = [
+      { type: "jump", rep: { n: 2, foot: "BOTH", flightMs: 560, estCm: 38.4 } }, { type: "jump", rep: { n: 3, foot: "L", flightMs: 400, estCm: 19.6 } }, { type: "jump", rep: { n: 4, foot: "R", flightMs: 420, estCm: 21.6 } },
+      { type: "firststep", trial: { n: 1, side: "L", reactionMs: 220, pushMs: 300, stepMs: 480, dir: "FWD", azDeg: 0 } }, { type: "firststep", trial: { n: 2, side: "R", reactionMs: 210, pushMs: 290, stepMs: 462, dir: "FWD", azDeg: 0 } }, { type: "firststep", trial: { n: 3, side: "L", reactionMs: 215, pushMs: 295, stepMs: 470, dir: "FWD", azDeg: 0 } },
+      { type: "sprint", trial: { n: 1, N: 5, startSide: "L", t3: 1100, tN: 1900, vN: 4.8, accel: 2.5 } },
+      { type: "jump", rep: { n: 5, foot: "BOTH", flightMs: 300, estCm: 11 } }, { type: "rsi", rsi: 0.9, hops: 2 }, { type: "jump", rep: { n: 6, foot: "BOTH", flightMs: 320, estCm: 12 } }, { type: "rsi", rsi: 1.1, hops: 3 },
+    ];
+    for (const f of feeds) { await evt(page, f); await page.waitForTimeout(40); }
+    await waitFor(page, () => window.BWFun.view() === "card", null, 5000);
+    await settle(page);
+    await page.evaluate(() => localStorage.removeItem("bw-ae-visit"));   // the next visit: three hours later
+    await page.reload();
+    await page.waitForTimeout(900);
+    check(await page.evaluate(() => /Welcome back/i.test(document.querySelector(".ae-title")?.textContent ?? "")), "returning athlete: the headline speaks to them");
+    check(await page.evaluate(() => [...document.querySelectorAll(".ae-program .ae-prog-val")].every((v) => !/No mark/i.test(v.textContent) && /\d/.test(v.textContent))), "returning athlete: every station shows a best");
+    check(await page.evaluate(() => /To beat/i.test(document.querySelector(".ae-next .ae-target")?.textContent ?? "") && /\d/.test(document.querySelector(".ae-next .ae-target")?.textContent ?? "")), "returning athlete: the next drill says what to beat");
+    check(await page.evaluate(() => /Chase: your left foot/i.test(document.querySelector(".ae-chase")?.textContent ?? "")), "returning athlete: the weaker foot is named (left 9 percent below right)");
+    check(await page.evaluate(() => !!document.querySelector(".ae-hero .ae-tower .ae-flag.is-best") && !document.querySelector(".ae-hero .ae-flag.is-empty")), "returning athlete: the tower carries an amber flag at their best");
+    for (const w of [320, 375, 402]) { await page.setViewportSize({ width: w, height: 800 }); await page.waitForTimeout(150); check(await noHScroll(page), `returning athlete: nothing pokes past the screen at ${w} px`); }
+    await ctx.close();
+  }
+  // G3: Simulate on a TV: the GO is the whole panel, a persistent bar says it is a demo, nothing pokes out at 1920 px
+  {
+    const page = await newPage({ width: 1920, height: 1080, scheme: "dark" });
+    await page.goto(BASE);
+    await page.waitForTimeout(800);
+    await page.click("#ae-sim");
+    await waitFor(page, () => window.BWFun.view() === "run", null, 5000);
+    check(await page.evaluate(() => !!document.querySelector(".ae-simbar")), "Simulate: a persistent bar says this is a simulated demo");
+    await waitFor(page, () => /First step/.test(document.querySelector(".ae-station")?.textContent ?? ""), null, 25000);
+    await waitFor(page, () => !!document.querySelector("#ae-prompt.is-go"), null, 15000);
+    const box = await page.evaluate(() => { const c = document.querySelector(".ae-prompt-card.is-go"); if (!c) return null; const b = c.getBoundingClientRect(); return { w: b.width / window.innerWidth, h: b.height / window.innerHeight, fs: parseFloat(getComputedStyle(document.getElementById("ae-prompt")).fontSize) }; });
+    check(box && box.w > 0.4 && box.h > 0.3 && box.fs >= 120, `GO fills a big part of the screen (${box ? `${Math.round(box.w * 100)} % wide, ${Math.round(box.h * 100)} % tall, ${Math.round(box.fs)} px type` : "no panel"})`);
+    check(await noHScroll(page), "TV size: nothing pokes past the screen at 1920 px");
     await page.close();
   }
 
