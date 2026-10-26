@@ -1,46 +1,81 @@
 /* Combine layer tokens: the ONLY file of the engagement layer that holds raw colours, pixel sizes and durations.
    fun.css and the kit's stylesheet read tokens, never literals (a test checks it).
 
-   The page's own tokens (--navy, --panel, --teal, --text ... in index.html) are the dark theme. This file adds what the
-   layer needs on top of them (text-safe accent colours, a second text colour, spacing, durations) and the light theme, which
-   overrides the same names, so every existing card follows it with no rule changed. All of it only applies when the layer is on
-   (html[data-fun], set by early.js), so ?fun=0 is the original page, pixel for pixel. Brand teal stays #00d4aa in the dark theme. */
+   The page's own tokens (--navy, --panel, --teal, --text ... in index.html) are the original dark theme. This file deepens them for the
+   Combine (a darker, more contrasty navy that reads from across a room), adds what the layer needs on top (text-safe accent colours,
+   a second text colour, spacing, type, durations) and the light theme, which overrides the same names, so every existing card follows
+   with no rule changed. All of it only applies when the layer is on (html[data-fun], set by early.js), so ?fun=0 is the original page,
+   pixel for pixel. Brand teal stays #00d4aa in the dark theme.
+
+   Colour roles (BrilliantWear house): measured = teal, personal best = amber, simulated or model = periwinkle (always dashed).
+   Type: three voices. Display is a condensed scoreboard face for words and numerals read from far away (installed with macOS, iOS and
+   Windows, so the demo works offline), body is the system sans, and instrument labels are the system mono in small capitals. */
 
 :root {
-  --sp-1: .25rem; --sp-2: .5rem; --sp-3: .75rem; --sp-4: 1rem; --sp-5: 1.5rem; --sp-6: 2rem; --sp-7: 3rem;
+  --sp-1: .25rem; --sp-2: .5rem; --sp-3: .75rem; --sp-4: 1rem; --sp-5: 1.5rem; --sp-6: 2rem; --sp-7: 3rem; --sp-8: 4rem;
   --tap: 2.75rem;
-  --line-w: 1px; --stroke-w: 2px; --focus-w: 3px;
-  --t-fast: .16s; --t-base: .32s; --t-slow: .7s; --t-stamp: .45s; --t-fill: .9s;
+  --line-w: 1px; --stroke-w: 2px; --focus-w: 3px; --rule-w: 4px;
+  --t-fast: .16s; --t-base: .32s; --t-slow: .7s; --t-stamp: .45s; --t-fill: .9s; --t-rise: .8s;
   --ease-out: cubic-bezier(.22, 1, .36, 1); --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
-  --font: -apple-system, "SF Pro Text", Inter, "Segoe UI", Roboto, sans-serif;
-  --font-display: ui-rounded, "SF Pro Rounded", -apple-system, "SF Pro Text", Inter, "Segoe UI", Roboto, sans-serif;
+  --font: -apple-system, "SF Pro Text", "Segoe UI", system-ui, Roboto, sans-serif;
+  --font-display: "Avenir Next Condensed", "Bahnschrift", "DIN Condensed", "Roboto Condensed", "Arial Narrow", -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, "Cascadia Mono", Consolas, monospace;
   --fs-xs: .75rem; --fs-sm: .875rem; --fs-md: 1rem; --fs-lg: 1.125rem; --fs-xl: 1.5rem; --fs-2xl: 2.25rem; --fs-3xl: 3.25rem;
+  /* the display sizes the booth reads from two or three metres; they grow in the wide-screen block below */
+  --fs-kicker: .75rem; --fs-title: 2.75rem; --fs-prompt: 4.25rem; --fs-num: 5.5rem; --fs-stamp: 1.875rem; --fs-lede: 1.0625rem; --fs-hint: .9375rem;
+  --tracking-caps: .14em; --tracking-display: .01em;
   --lift: .5rem; --tilt: -3deg;
   --bar-h: .75rem; --meter-h: 1.5rem; --mark-w: .25rem;
-  --card-max: 40rem;
+  --card-max: 40rem; --page-max: 78rem;
+  /* the height tower (the signature): a ruler with your best on it */
+  --tower-h: 15rem; --tower-w: 7.5rem; --shaft-w: 2.25rem; --tick-w: .625rem; --tick-major-w: 1rem; --tick-h: 1px; --flag-gap: .5rem;
+  --ruler-w: 2.75rem; --flags-w: 6.75rem;
+  --dot: .625rem; --icon: 1.5rem; --icon-lg: 2.25rem;
 }
 
-/* dark theme extras (the page's own dark palette is the base) */
+/* the booth scale: the whole interface grows with the screen, so a TV across a room reads like a laptop at arm's length (about 22 px at 1080p) */
+html[data-fun] { font-size: clamp(16px, min(1.15vw, 2.05vh), 32px); }
+
+/* narrow phones: a headline that does not break word by word, and numerals that leave room beside them */
+@media (max-width: 30rem) {
+  :root { --fs-title: 2.25rem; --fs-prompt: 3.75rem; --fs-num: 4.75rem; --fs-stamp: 1.625rem; --tower-h: 12.5rem; --ruler-w: 2.25rem; --flags-w: 5.5rem; --shaft-w: 2rem; }
+}
+
+/* tablets, then wide screens: bigger display sizes and a taller tower */
+@media (min-width: 40rem) {
+  :root { --fs-title: 3.25rem; --fs-prompt: 5.5rem; --fs-num: 7rem; --fs-stamp: 2.25rem; --tower-h: 18rem; --tower-w: 8.5rem; }
+}
+@media (min-width: 60rem) {
+  :root { --fs-kicker: .8125rem; --fs-title: 3.75rem; --fs-prompt: 7rem; --fs-num: 9.5rem; --fs-stamp: 3rem; --fs-lede: 1.375rem; --fs-hint: 1.0625rem; --tower-h: clamp(16rem, 54vh, 36rem); --tower-w: 10rem; --shaft-w: 3rem; --icon: 1.75rem; --icon-lg: 2.75rem; }
+}
+
+/* dark theme: a deeper navy than the page's own, same hue */
 html[data-fun] {
-  --teal-text: #00d4aa; --amber-text: #ffb020; --blue-text: #79a6ff; --red-text: #ff7a8a;
-  --text-2: #c9d0f0; --surface-3: #2f3677;
-  --track: rgba(140, 165, 230, .24); --overlay: rgba(10, 13, 38, .8);
+  --navy: #0d1236; --navy-2: #070a24; --navy-glow: #1a2266; --panel: #151b4a; --panel-2: #1e2668; --surface-3: #2b3482;
+  --line: #333d8e;
+  --radius-card: .5rem; --radius-card-sm: .375rem; --radius-ctl: .375rem; --radius-sm: .25rem;
+  --ruled: repeating-linear-gradient(to top, rgba(140, 165, 230, .07) 0, rgba(140, 165, 230, .07) 1px, transparent 1px, transparent 2.5rem);
+  --text: #f2f4ff; --text-2: #cfd5f5; --muted: #a6aed6;
+  --teal-text: #00d4aa; --amber: #ffc56b; --amber-text: #ffc56b; --blue: #7aa2ff; --blue-text: #8fb0ff; --red-text: #ff8d9a;
+  --on-amber: #2a1a02;
+  --track: rgba(140, 165, 230, .22); --overlay: rgba(7, 10, 36, .84);
   --shadow: 0 24px 60px -20px rgba(0, 0, 0, .7); --focus: #ffffff;
-  --rarity-common: #9aa3c7; --rarity-uncommon: #4fd970; --rarity-rare: #79a6ff; --rarity-epic: #b98cff; --rarity-legendary: #ffcc55;
-  --confetti-1: #00d4aa; --confetti-2: #ffcc55; --confetti-3: #79a6ff; --confetti-4: #ff9f7a; --confetti-5: #eef1ff;
+  --rarity-common: #a6aed6; --rarity-uncommon: #4fd970; --rarity-rare: #79a6ff; --rarity-epic: #b98cff; --rarity-legendary: #ffcc55;
+  --confetti-1: #00d4aa; --confetti-2: #ffc56b; --confetti-3: #7aa2ff; --confetti-4: #ff9f7a; --confetti-5: #f2f4ff;
   color-scheme: dark;
 }
 
-/* light theme: the same names, light values */
+/* light theme: warm paper and ink (the house pair), with text-safe inks for anything that is bright on dark (the house teal ink, a shade deeper so it also passes AA on the tinted chips) */
 html[data-fun][data-theme="light"] {
   color-scheme: light;
-  --navy: #eef2fa; --navy-2: #e2e8f5; --navy-glow: #ffffff; --panel: #ffffff; --panel-2: #eef1f9; --surface-3: #e4e9f6;
-  --text: #11163a; --text-2: #394168; --muted: #55608a; --line: #cdd4ea;
-  --teal: #00d4aa; --teal-dim: #00a88a; --teal-text: #00705c; --on-teal: #02241c; --on-teal-dim: #02241c;
-  --amber: #e6a512; --amber-text: #7a4f00; --on-amber: #2a1a02; --armed-bg: #fff1d1;
-  --red: #d6334b; --red-text: #b3243c; --blue: #2a6fd6; --blue-text: #1f5fbf;
-  --track: rgba(20, 40, 90, .14); --overlay: rgba(243, 246, 251, .9);
-  --shadow: 0 24px 60px -24px rgba(13, 23, 51, .3); --focus: #11163a;
-  --rarity-common: #55608a; --rarity-uncommon: #0b7a2a; --rarity-rare: #1f5fae; --rarity-epic: #7a45d6; --rarity-legendary: #a06a00;
-  --confetti-1: #00d4aa; --confetti-2: #e6a512; --confetti-3: #2a78d6; --confetti-4: #e0683a; --confetti-5: #11163a;
+  --navy: #f4f2ec; --navy-2: #e9e6dc; --navy-glow: #fdfcf9; --panel: #ffffff; --panel-2: #f1efe8; --surface-3: #e6e3d8;
+  --text: #0c1130; --text-2: #363c62; --muted: #545b80; --line: #d3d0c4;
+  --teal: #00d4aa; --teal-dim: #00a88a; --teal-text: #006f5b; --on-teal: #02241c; --on-teal-dim: #02241c;
+  --amber: #ffc56b; --amber-text: #8a5200; --on-amber: #2a1a02; --armed-bg: #fff1d1;
+  --red: #d6334b; --red-text: #b3243c; --blue: #3d5fd1; --blue-text: #3555c0;
+  --track: rgba(12, 17, 48, .12); --overlay: rgba(244, 242, 236, .92);
+  --ruled: repeating-linear-gradient(to top, rgba(12, 17, 48, .05) 0, rgba(12, 17, 48, .05) 1px, transparent 1px, transparent 2.5rem);
+  --shadow: 0 24px 60px -24px rgba(12, 17, 48, .3); --focus: #0c1130;
+  --rarity-common: #545b80; --rarity-uncommon: #0b7a2a; --rarity-rare: #1f5fae; --rarity-epic: #7a45d6; --rarity-legendary: #8a5200;
+  --confetti-1: #00d4aa; --confetti-2: #ffc56b; --confetti-3: #3d5fd1; --confetti-4: #e0683a; --confetti-5: #0c1130;
 }

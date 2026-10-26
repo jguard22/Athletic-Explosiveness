@@ -51,6 +51,8 @@ let mode = root.getAttribute("data-fun");
 let booth = root.hasAttribute("data-booth");
 let real = null, simCtx = null, ctx = null;       // ctx: { fun, sim, visit, combine }
 let view = "idle", run = null, cardHandle = null;  // idle | run | card
+/** The screen the stage is on, also written on <html> so the page can hide what is only in the way during a round (the section links). */
+function setView(next) { view = next; root.setAttribute("data-ae-view", next); }
 let armTimer = null, goWatch = null, fwTicker = null, restTimer = null, stationAt = 0;
 let lastSum = null, lastRes = null, lastJumpCm = null, meId = null, lastFirstWinMs = null;
 const pending = { armedFor: null };
@@ -134,16 +136,34 @@ function lastCardInfo() {
   const c = ctx.fun.cards.all().pop();
   return c && c.flames ? { flames: c.flames, name: C.HEAT.names[c.flames - 1] } : null;
 }
+/** Your bests so far, in storage units: what the kit's personal bests hold (the demo twin's, while simulating). */
+function bestsNow() {
+  const b = ctx.fun.bests, n = AE.sprintSteps();
+  return { jump: b.jump(), singleL: b.single("L"), singleR: b.single("R"), firstStep: b.firstStep(), sprint: b.sprint(n), sprintN: n, rsi: b.rsi() };
+}
+const viewNow = () => C.idleView(bestsNow());
+let shownConnected = null;
+function drawIdle() {
+  shownConnected = AE.hasDevice();
+  const top = board.top()[0] ?? null;
+  ui.renderIdle(els.stage, {
+    sim: ctx.sim, booth, ble: hasBle, connected: shownConnected, safety: prefs.get("bw-ae-safety") !== "1", last: ctx.sim ? null : lastCardInfo(), can: can(),
+    view: viewNow(), top: top ? { who: top.who, cm: top.cm } : null, sprintN: AE.sprintSteps(), act: stageActs,
+  });
+  watchRest();
+}
 function toIdle() {
   clearRoundTimers();
   syncVisit();
-  view = "idle"; run = null; cardHandle = null;
-  ui.renderIdle(els.stage, { sim: ctx.sim, booth, ble: hasBle, safety: prefs.get("bw-ae-safety") !== "1", last: ctx.sim ? null : lastCardInfo(), can: can(), act: stageActs });
-  watchRest();
+  setView("idle"); run = null; cardHandle = null;
+  drawIdle();
 }
+// insoles may be connected (or drop out) while the first screen is up: say so, and put the right button first
+setInterval(() => { if (view === "idle" && mode === "combine" && AE.hasDevice() !== shownConnected) drawIdle(); }, 1000);
 const stageActs = {
   start: () => startCombine(),
   sim: () => document.getElementById("btn-sim").click(),   // the page's own Simulate switch; it reports back with a "sim" event
+  connect: () => document.getElementById("btn-insoles").click(),
   ackSafety: () => { prefs.set("bw-ae-safety", "1"); if (view === "idle") toIdle(); },
   rested: () => tapRested(),
   skip: () => skipStation(),
@@ -171,8 +191,8 @@ function startCombine() {
   ctx.fun.beginFirstWin();
   stats.record("combine_start"); if (r.n >= 2) stats.record("rematch");
   restTimerStop();
-  view = "run";
-  run = ui.renderRun(els.stage, { act: stageActs });
+  setView("run");
+  run = ui.renderRun(els.stage, { act: stageActs, sim: ctx.sim });
   if (ctx.sim) { if (r.n >= 2) AE.simReplay(); AE.simHold(false); }
   enterStation();
   run.focus();
@@ -180,13 +200,13 @@ function startCombine() {
   say(COPY.stage.stationOf(1, C.STATIONS.length));
 }
 
-function summaryStatus() { return ctx.combine.summary()?.status ?? {}; }
-
-function enterStation() {
+/** `dwell`: a result has just landed, so it stays on screen a few seconds before the next station's "to beat" replaces it. */
+function enterStation({ dwell = false } = {}) {
   const c = ctx.combine, id = c.stationId;
   if (!id) return;
-  run.setRail(summaryStatus(), id);
-  run.setStation(id, { sprintN: AE.sprintSteps() });
+  const sum = c.summary();
+  run.setRail(sum?.status ?? {}, id, C.railValues(sum));
+  run.setStation(id, { sprintN: AE.sprintSteps(), target: viewNow().stations[id], dwellMs: dwell ? C.CAPS.resultDwellMs : 0 });
   ctx.fun.tick();
   const sim = ctx.sim;
   stationAt = Date.now();
@@ -244,7 +264,7 @@ function onGo(kind) {
   // a real person who never steps would leave the window open: look again after eight seconds
   goWatch = setTimeout(() => {
     if (view !== "run" || !AE.measuring()) return;
-    AE.cancelDrills(); run.setGo(false); run.setStation(ctx.combine.stationId, { sprintN: AE.sprintSteps() });
+    AE.cancelDrills(); run.setGo(false); run.setStation(ctx.combine.stationId, { sprintN: AE.sprintSteps(), target: viewNow().stations[ctx.combine.stationId] });
     run.setStatus(COPY.stage.noResponse); refreshSub(); scheduleArm(1200, { keepStatus: true });
   }, 8000);
 }
@@ -288,7 +308,7 @@ function onFeed(d) {
     say(COPY.stage.live.stamp(COPY.stations[r.stationDone].name));
   }
   if (r.finished) { finishRound(); return; }
-  if (r.stationDone) { clearTimeout(armTimer); enterStation(); return; }
+  if (r.stationDone) { clearTimeout(armTimer); enterStation({ dwell: true }); return; }
   refreshSub();
   if (rep.kind === "firststep") scheduleArm(ctx.sim ? 500 : 1300);
 }
@@ -371,7 +391,7 @@ function finishRound({ silent = false } = {}) {
   lastRes = res;
   if (!res) { stats.record("combine_stop"); toIdle(); say(COPY.card.noStations); return; }
   if (sum.early) stats.record("combine_stop"); else stats.record("combine_done");
-  view = "card";
+  setView("card");
   const level = res.outcome.xp;
   const canBoard = !ctx.sim && sum.marks.leap != null;
   const pulseDue = !ctx.visit.pulsed;
@@ -530,7 +550,7 @@ function setMode(next) {
 
 // ---------------------------------------------------------------- the page tells us things
 function onSim(on) {
-  if (view === "run") { clearRoundTimers(); AE.cancelDrills(); ctx.combine.stop(); view = "idle"; }
+  if (view === "run") { clearRoundTimers(); AE.cancelDrills(); ctx.combine.stop(); setView("idle"); }
   ctx.fun.cancel();
   if (on) {
     simCtx?.fun.dispose();
